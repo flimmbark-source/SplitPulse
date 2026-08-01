@@ -1,0 +1,185 @@
+/* ============================================================
+   SPLITPULSE — visual system
+   Two worlds: the CRUDE physical (low-res, dithered, unstable)
+   and the ALCHEMICAL (razor-sharp vector, luminous, exact).
+   ============================================================ */
+
+:root {
+  --bg:        #07070c;
+  --bg-2:      #0d0d18;
+  --ink:       #e9e6ff;
+  --ink-dim:   #8a86b8;
+  --line:      #2a2a48;
+
+  --pulse:     #6cf0ff;   /* alchemical cyan  */
+  --pulse-2:   #b98bff;   /* arcane violet    */
+  --attack:    #ff5a6e;   /* offensive red    */
+  --defend:    #58d0ff;   /* defensive blue   */
+  --poison:    #8dff6a;   /* toxic green       */
+  --sidestep:  #ffd24a;   /* timing gold       */
+  --move:      #ff9d54;   /* force orange      */
+  --hit:       #fff6a0;   /* success flash     */
+  --miss:      #4a3a52;   /* dead node         */
+
+  --mono: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+  --display: "Impact", "Haettenschweiler", "Arial Narrow Bold", var(--mono);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+}
+
+#root { position: relative; }
+
+.stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* dithered vignette that sits over everything physical */
+.grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  background:
+    radial-gradient(120% 120% at 50% 40%, transparent 55%, rgba(0,0,0,0.55) 100%);
+  mix-blend-mode: multiply;
+}
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image:
+    repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 2px);
+}
+
+/* pixelated canvas presentation for the physical world */
+.ps1-canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ---- HUD typography ---- */
+.hud {
+  position: absolute;
+  z-index: 30;
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 0 #000;
+}
+.tag {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  color: var(--ink-dim);
+}
+
+.bigtitle {
+  font-family: var(--display);
+  font-size: clamp(48px, 14vw, 190px);
+  line-height: 0.82;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, var(--pulse) 0%, var(--pulse-2) 60%, var(--attack) 130%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 22px rgba(108,240,255,0.25));
+}
+
+button.key, .keycap {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--ink);
+  background: linear-gradient(180deg, #1a1a2e, #0c0c16);
+  border: 1px solid var(--line);
+  border-bottom-width: 3px;
+  border-radius: 6px;
+  padding: 6px 10px;
+  min-width: 30px;
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.keycap.sm { padding: 2px 6px; min-width: 20px; font-size: 12px; }
+
+.btn {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 13px;
+  color: var(--bg);
+  background: var(--pulse);
+  border: none;
+  padding: 12px 26px;
+  cursor: pointer;
+  border-radius: 2px;
+  box-shadow: 0 0 24px rgba(108,240,255,0.4);
+  transition: transform 0.08s ease, box-shadow 0.15s ease;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 0 34px rgba(108,240,255,0.7); }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
+
+/* ---- health / distance meters ---- */
+.meter {
+  height: 10px;
+  background: #14141f;
+  border: 1px solid var(--line);
+  position: relative;
+  overflow: hidden;
+}
+.meter > span {
+  position: absolute; inset: 0;
+  transform-origin: left center;
+  transition: transform 0.18s ease;
+}
+
+.center-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+  z-index: 30;
+}
+
+.pointer { cursor: pointer; }
+.dim { color: var(--ink-dim); }
+.mono { font-family: var(--mono); }
+.nowrap { white-space: nowrap; }
+
+@keyframes blink { 50% { opacity: 0.25; } }
+.blink { animation: blink 1s steps(2) infinite; }
+
+@keyframes floatUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.floatUp { animation: floatUp 0.35s ease both; }
+
+/* scanline shimmer for the arcane panels */
+.arcane-panel {
+  background: linear-gradient(180deg, rgba(18,18,34,0.92), rgba(8,8,16,0.94));
+  border: 1px solid var(--line);
+  box-shadow: 0 0 0 1px rgba(108,240,255,0.05), 0 20px 60px rgba(0,0,0,0.6);
+  backdrop-filter: blur(2px);
+}
+
+.fadeMask { position:absolute; inset:0; background: var(--bg); z-index: 90; pointer-events: none; }

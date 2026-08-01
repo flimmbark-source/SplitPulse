@@ -1,0 +1,109 @@
+// ============================================================
+// SPLITPULSE — shared types
+// The deterministic combat timeline is the single authority.
+// Visuals consume it; they never redefine it.
+// ============================================================
+
+export type Keyword =
+  | "attack"
+  | "defend"
+  | "poison"
+  | "sidestep"
+  | "guard"
+  | "move"
+  | "damage"; // enemy-side hit payload
+
+export interface Effect {
+  keyword: Keyword;
+  value?: number;
+  /** for enemy hit-attached effects */
+  trigger?: "onHit";
+}
+
+// ---- Materials -------------------------------------------------
+export interface MaterialDef {
+  id: string;
+  name: string;
+  blurb: string;
+  color: string;
+  glyph: string; // single glyph shown in the node / belt
+  /** effect this material contributes when placed in a node */
+  effect: Effect;
+  maxCharges: number;
+}
+
+/** a material instance sitting in the prepared belt */
+export interface BeltMaterial {
+  def: MaterialDef;
+  key: string; // Q W E R T Y ...
+  charges: number;
+}
+
+// ---- Abilities -------------------------------------------------
+export type NodeKind = "fixed" | "config";
+
+export interface AbilityNode {
+  id: string;
+  beat: number; // position on the shared beat timeline
+  x: number; // svg layout 0..100
+  y: number; // svg layout 0..100
+  execKey: string; // key pressed during rhythmic execution
+  kind: NodeKind;
+  /** fixed nodes carry a permanent effect */
+  fixedEffect?: Effect;
+  /** config nodes expose a number-key slot */
+  slot?: number;
+}
+
+export interface Ability {
+  id: string;
+  name: string;
+  blurb: string;
+  beats: number; // total beats in the phrase
+  nodes: AbilityNode[];
+  /** connections for the travelling pulse, in play order */
+  edges: [string, string][];
+}
+
+// ---- Enemy -----------------------------------------------------
+export interface EnemyAction {
+  id: string;
+  name: string;
+  beat: number; // single resolution beat
+  instances: number; // number of hit instances generated on that beat
+  perHit: Effect[]; // effects each hit carries (e.g. damage 2)
+  onHit: Effect[]; // effects triggered when a hit lands (e.g. move -1)
+  /** partial info shown before the move is learned */
+  telegraph: string;
+}
+
+export interface EnemyDef {
+  id: string;
+  name: string;
+  maxHp: number;
+  action: EnemyAction;
+}
+
+// ---- Resolution ------------------------------------------------
+export interface ResolvedNode {
+  node: AbilityNode;
+  effect?: Effect; // the effect this node produced (from fixed or material)
+  materialKey?: string;
+  success: boolean; // did the player hit the timing?
+}
+
+export interface ResolutionLine {
+  text: string;
+  tone: "good" | "bad" | "neutral";
+}
+
+export interface Resolution {
+  lines: ResolutionLine[];
+  playerDamageDealt: number;
+  poisonApplied: number;
+  damageTaken: number;
+  pushedBack: number;
+  sidestepped: boolean;
+  actionNeutralized: boolean; // => chain earned
+  chainEarned: boolean;
+}

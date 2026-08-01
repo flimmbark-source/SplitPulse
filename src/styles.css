@@ -1,185 +1,240 @@
 /* ============================================================
-   SPLITPULSE — visual system
-   Two worlds: the CRUDE physical (low-res, dithered, unstable)
-   and the ALCHEMICAL (razor-sharp vector, luminous, exact).
+   SPLITPULSE — design system
+   Concept: two worlds, one instrument.
+     · the PHYSICAL world is crude, warm, dithered, pixel-lettered.
+     · the ALCHEMICAL layer is cold, exact, thin-lined, vector.
+   Style = hierarchy + restraint, not saturation. One accent
+   (alchemical cyan). Keyword colours live ONLY on keyword tokens.
    ============================================================ */
 
+@font-face {
+  font-family: "Chakra Petch"; font-style: normal; font-weight: 500;
+  font-display: swap; src: url("/fonts/chakra-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Chakra Petch"; font-style: normal; font-weight: 600;
+  font-display: swap; src: url("/fonts/chakra-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Chakra Petch"; font-style: normal; font-weight: 700;
+  font-display: swap; src: url("/fonts/chakra-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Mono"; font-style: normal; font-weight: 400;
+  font-display: swap; src: url("/fonts/spacemono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Mono"; font-style: normal; font-weight: 700;
+  font-display: swap; src: url("/fonts/spacemono-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Silkscreen"; font-style: normal; font-weight: 400;
+  font-display: swap; src: url("/fonts/silkscreen-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Silkscreen"; font-style: normal; font-weight: 700;
+  font-display: swap; src: url("/fonts/silkscreen-700.woff2") format("woff2");
+}
+
 :root {
-  --bg:        #07070c;
-  --bg-2:      #0d0d18;
-  --ink:       #e9e6ff;
-  --ink-dim:   #8a86b8;
-  --line:      #2a2a48;
+  /* neutral ramp — cool near-black, the structural language */
+  --bg:        #06060d;
+  --bg-2:      #0a0b14;
+  --surface:   #0e0f1b;
+  --surface-2: #14152400;
+  --line:      #21223a;
+  --line-2:    #333557;
+  --ink:       #e7e9f5;
+  --ink-dim:   #7b7e9e;
+  --ink-faint: #474a67;
 
-  --pulse:     #6cf0ff;   /* alchemical cyan  */
-  --pulse-2:   #b98bff;   /* arcane violet    */
-  --attack:    #ff5a6e;   /* offensive red    */
-  --defend:    #58d0ff;   /* defensive blue   */
-  --poison:    #8dff6a;   /* toxic green       */
-  --sidestep:  #ffd24a;   /* timing gold       */
-  --move:      #ff9d54;   /* force orange      */
-  --hit:       #fff6a0;   /* success flash     */
-  --miss:      #4a3a52;   /* dead node         */
+  /* the ONE accent: alchemical cyan */
+  --pulse:      #67e8ff;
+  --pulse-deep: #2f8aa6;
+  --arcane:     #a98bff;   /* secondary arcane violet, used sparingly */
 
-  --mono: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
-  --display: "Impact", "Haettenschweiler", "Arial Narrow Bold", var(--mono);
+  /* threat register — the physical/enemy world */
+  --threat: #ff5566;
+  --ember:  #ff9a4d;
+
+  /* semantic keyword colours — ONLY on keyword tokens */
+  --attack:   #ff5566;
+  --defend:   #4fc3ff;
+  --poison:   #86e35a;
+  --sidestep: #ffcf4a;
+  --move:     #ff9a4d;
+  --guard:    #4fc3ff;
+  --hit:      #fff2a6;
+  --miss:     #363049;
+
+  --display: "Chakra Petch", "Arial Narrow", sans-serif;
+  --mono: "Space Mono", ui-monospace, Menlo, Consolas, monospace;
+  --pixel: "Silkscreen", var(--mono);
+
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
-  height: 100%;
-  width: 100%;
+  height: 100%; width: 100%;
   overflow: hidden;
   background: var(--bg);
   color: var(--ink);
   font-family: var(--mono);
-  -webkit-font-smoothing: none;
-  font-smooth: never;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
 }
-
 #root { position: relative; }
 
-.stage {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
+.stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 
-/* dithered vignette that sits over everything physical */
-.grain {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 40;
-  background:
-    radial-gradient(120% 120% at 50% 40%, transparent 55%, rgba(0,0,0,0.55) 100%);
-  mix-blend-mode: multiply;
-}
-.grain::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  opacity: 0.05;
-  background-image:
-    repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 2px);
-}
-
-/* pixelated canvas presentation for the physical world */
-.ps1-canvas {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-/* ---- HUD typography ---- */
-.hud {
-  position: absolute;
-  z-index: 30;
-  font-family: var(--mono);
-  letter-spacing: 0.04em;
-  text-shadow: 0 2px 0 #000;
+/* ---------- type system ---------- */
+.display-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(20px, 2.3vw, 30px);
+  letter-spacing: 0.005em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 .tag {
-  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 400;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.26em;
   color: var(--ink-dim);
 }
-
-.bigtitle {
-  font-family: var(--display);
-  font-size: clamp(48px, 14vw, 190px);
-  line-height: 0.82;
-  letter-spacing: -0.02em;
-  text-transform: uppercase;
-  background: linear-gradient(180deg, var(--pulse) 0%, var(--pulse-2) 60%, var(--attack) 130%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 22px rgba(108,240,255,0.25));
-}
-
-button.key, .keycap {
-  font-family: var(--mono);
-  font-weight: 700;
-  color: var(--ink);
-  background: linear-gradient(180deg, #1a1a2e, #0c0c16);
-  border: 1px solid var(--line);
-  border-bottom-width: 3px;
-  border-radius: 6px;
-  padding: 6px 10px;
-  min-width: 30px;
-  text-align: center;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
-}
-.keycap.sm { padding: 2px 6px; min-width: 20px; font-size: 12px; }
-
-.btn {
-  font-family: var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  font-size: 13px;
-  color: var(--bg);
-  background: var(--pulse);
-  border: none;
-  padding: 12px 26px;
-  cursor: pointer;
-  border-radius: 2px;
-  box-shadow: 0 0 24px rgba(108,240,255,0.4);
-  transition: transform 0.08s ease, box-shadow 0.15s ease;
-}
-.btn:hover { transform: translateY(-1px); box-shadow: 0 0 34px rgba(108,240,255,0.7); }
-.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
-
-/* ---- health / distance meters ---- */
-.meter {
-  height: 10px;
-  background: #14141f;
-  border: 1px solid var(--line);
-  position: relative;
-  overflow: hidden;
-}
-.meter > span {
-  position: absolute; inset: 0;
-  transform-origin: left center;
-  transition: transform 0.18s ease;
-}
-
-.center-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  text-align: center;
-  z-index: 30;
-}
-
-.pointer { cursor: pointer; }
 .dim { color: var(--ink-dim); }
 .mono { font-family: var(--mono); }
 .nowrap { white-space: nowrap; }
 
-@keyframes blink { 50% { opacity: 0.25; } }
-.blink { animation: blink 1s steps(2) infinite; }
-
-@keyframes floatUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+.bigtitle {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(56px, 15vw, 200px);
+  line-height: 0.82;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  background: linear-gradient(175deg, var(--pulse) 0%, var(--arcane) 62%, var(--threat) 118%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
 }
+
+/* ---------- surfaces ---------- */
+.arcane-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.55);
+}
+
+/* ---------- keys ---------- */
+button.key, .keycap {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 5px 9px;
+  min-width: 28px;
+  text-align: center;
+  line-height: 1.1;
+}
+.keycap.sm { padding: 2px 6px; min-width: 18px; font-size: 11px; }
+
+/* ---------- buttons ---------- */
+.btn {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--pulse);
+  border: none;
+  padding: 12px 24px;
+  cursor: pointer;
+  border-radius: 2px;
+  box-shadow: 0 0 20px rgba(103,232,255,0.28);
+  transition: transform 0.08s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 0 30px rgba(103,232,255,0.55); }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line-2); box-shadow: none; }
+.btn.ghost:hover { border-color: var(--pulse); color: var(--pulse); }
+
+/* ---------- meters ---------- */
+.meter { height: 8px; background: #10111d; border: 1px solid var(--line); position: relative; overflow: hidden; }
+.meter > span { position: absolute; inset: 0; transform-origin: left center; transition: transform 0.18s ease; }
+
+.center-col { display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; z-index: 30; }
+.pointer { cursor: pointer; }
+
+/* ---------- HUD ---------- */
+.hud { position: absolute; z-index: 30; letter-spacing: 0.02em; }
+
+/* ============================================================
+   WORLD REGISTERS — the deliberate contrast
+   ============================================================ */
+
+/* PHYSICAL: warm, crude, pixel-lettered, dithered */
+.world-physical .tag,
+.world-physical .keycap { font-family: var(--pixel); letter-spacing: 0.08em; }
+.world-physical .keycap { font-size: 11px; }
+.ps1-canvas { image-rendering: pixelated; width: 100%; height: 100%; display: block; }
+
+/* ordered-dither + warm veil for the physical world */
+.dither {
+  position: absolute; inset: 0; pointer-events: none; z-index: 40;
+  background-image:
+    linear-gradient(45deg, rgba(0,0,0,0.5) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.5) 75%),
+    linear-gradient(45deg, rgba(0,0,0,0.5) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.5) 75%);
+  background-size: 2px 2px;
+  background-position: 0 0, 1px 1px;
+  opacity: 0.06;
+  mix-blend-mode: multiply;
+}
+.veil-warm {
+  position: absolute; inset: 0; pointer-events: none; z-index: 39;
+  background: radial-gradient(120% 120% at 50% 38%, rgba(120,60,40,0.10) 0%, transparent 45%, rgba(0,0,0,0.55) 100%);
+  mix-blend-mode: multiply;
+}
+
+/* ALCHEMICAL: cold, crisp, minimal grain */
+.grain {
+  position: absolute; inset: 0; pointer-events: none; z-index: 40;
+  background: radial-gradient(120% 120% at 50% 42%, transparent 60%, rgba(0,0,0,0.5) 100%);
+  mix-blend-mode: multiply;
+}
+
+/* ---------- collision streaks (§9.4) ---------- */
+.missile-streak {
+  position: absolute; left: 80%;
+  width: 34px; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--hit));
+  box-shadow: 0 0 14px var(--ember);
+  z-index: 14; pointer-events: none; opacity: 0;
+  animation-duration: 0.55s;
+  animation-timing-function: cubic-bezier(0.5, 0, 0.2, 1);
+  animation-fill-mode: forwards;
+}
+@keyframes streak-hit {
+  0% { opacity: 0; transform: translateX(0) scaleX(1); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-46vw) scaleX(2.4); }
+}
+@keyframes streak-miss {
+  0% { opacity: 0; transform: translate(0,0) scaleX(1); }
+  15% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(-40vw, -15vh) scaleX(1.4); }
+}
+
+/* ---------- misc animation ---------- */
+@keyframes blink { 50% { opacity: 0.28; } }
+.blink { animation: blink 1s steps(2) infinite; }
+@keyframes floatUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .floatUp { animation: floatUp 0.35s ease both; }
 
-/* scanline shimmer for the arcane panels */
-.arcane-panel {
-  background: linear-gradient(180deg, rgba(18,18,34,0.92), rgba(8,8,16,0.94));
-  border: 1px solid var(--line);
-  box-shadow: 0 0 0 1px rgba(108,240,255,0.05), 0 20px 60px rgba(0,0,0,0.6);
-  backdrop-filter: blur(2px);
-}
-
-.fadeMask { position:absolute; inset:0; background: var(--bg); z-index: 90; pointer-events: none; }
+.fadeMask { position: absolute; inset: 0; background: var(--bg); z-index: 90; pointer-events: none; }

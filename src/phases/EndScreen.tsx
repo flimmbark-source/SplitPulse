@@ -36,7 +36,7 @@ export default function EndScreen() {
         style={{
           background: victory
             ? "linear-gradient(180deg, var(--poison), var(--pulse))"
-            : "linear-gradient(180deg, var(--attack), var(--pulse-2))",
+            : "linear-gradient(180deg, var(--attack), var(--arcane))",
           WebkitBackgroundClip: "text",
           backgroundClip: "text",
         }}

@@ -24,8 +24,13 @@ export default function App() {
     };
   }, []);
 
+  // the two world registers — physical (crude/warm) vs alchemical (cold/crisp)
+  const physical = phase === "gather" || phase === "approach";
+  const arcane =
+    phase === "configure" || phase === "execute" || phase === "resolve";
+
   return (
-    <div className="stage">
+    <div className={`stage ${physical ? "world-physical" : "world-arcane"}`}>
       {phase === "title" && <Title />}
       {phase === "gather" && <Gather />}
       {phase === "approach" && <Approach />}
@@ -34,12 +39,16 @@ export default function App() {
       {phase === "resolve" && <Resolve />}
       {(phase === "gameover" || phase === "victory") && <EndScreen />}
 
-      {(phase === "approach" ||
-        phase === "configure" ||
-        phase === "execute" ||
-        phase === "resolve") && <Hud />}
+      {(phase === "approach" || arcane) && <Hud />}
 
-      <div className="grain" />
+      {physical ? (
+        <>
+          <div className="veil-warm" />
+          <div className="dither" />
+        </>
+      ) : (
+        <div className="grain" />
+      )}
     </div>
   );
 }

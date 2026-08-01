@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "../store";
 import Diagram, { type ExecState } from "../components/Diagram";
-import EnemyDiagram from "../components/EnemyDiagram";
 import { nodeEffect } from "../game/nodes";
 import { resolveExchange } from "../game/resolve";
-import { CINDER_BATTERY } from "../data/content";
+import { CINDER_BATTERY, CINDER_BATTERY_DIAGRAM } from "../data/content";
 import { sfx } from "../audio";
 import type { ResolvedNode } from "../types";
 
@@ -174,101 +173,141 @@ export default function Execute() {
     return { nodeState: { ...statusRef.current }, ring, pulse };
   }, [now, nodes, ability]);
 
+  // ---- enemy exec state (same grammar, but authored & auto-resolving) ----
+  const enemyDiagram = CINDER_BATTERY_DIAGRAM;
+  const enemyExec: ExecState = useMemo(() => {
+    const ring: Record<string, number> = {};
+    const nodeState: Record<string, "pending" | "hit" | "miss"> = {};
+    for (const n of enemyDiagram.nodes) {
+      const target = targetOf(n.beat);
+      ring[n.id] = Math.max(-1, Math.min(1, (now - (target - RING_LEAD)) / RING_LEAD));
+      // charge nodes light as the pulse passes; the FIRE node lights on its beat
+      nodeState[n.id] = now >= target ? "hit" : "pending";
+    }
+    let pulse: ExecState["pulse"] = null;
+    for (const [from, to] of enemyDiagram.edges) {
+      const nf = enemyDiagram.nodes.find((n) => n.id === from)!;
+      const nt = enemyDiagram.nodes.find((n) => n.id === to)!;
+      const tf = targetOf(nf.beat);
+      const tt = targetOf(nt.beat);
+      if (now >= tf && now <= tt && tt > tf) {
+        pulse = { from, to, p: (now - tf) / (tt - tf) };
+        break;
+      }
+    }
+    return { nodeState, ring, pulse };
+  }, [now, enemyDiagram]);
+
   const displayBeat = Math.max(0, Math.min(ability.beats, Math.floor((now - LEAD_IN) / BEAT_MS) + 1));
   const counting = now < LEAD_IN;
 
   return (
     <div style={{ position: "absolute", inset: 0, background: "#05030a", overflow: "hidden" }}>
-      {/* diagonal luminous divider */}
+      {/* diagonal luminous divider — the seam between the two worlds */}
       <div
         style={{
           position: "absolute",
           top: "-20%",
-          left: "58%",
-          width: 3,
+          left: "50%",
+          width: 2,
           height: "140%",
-          background: "linear-gradient(180deg, transparent, var(--pulse), transparent)",
-          transform: "rotate(9deg)",
-          boxShadow: "0 0 24px var(--pulse)",
-          opacity: 0.7,
+          background: "linear-gradient(180deg, transparent, var(--pulse), var(--attack), transparent)",
+          transform: "rotate(8deg)",
+          boxShadow: "0 0 20px rgba(108,240,255,0.5)",
+          opacity: 0.55,
           zIndex: 5,
         }}
       />
 
-      {/* ENEMY SIDE (upper-right) */}
+      {/* shared beat readout, straddling the seam */}
       <div
         style={{
           position: "absolute",
-          top: 0,
-          right: 0,
-          width: "42%",
-          height: "100%",
-          padding: "88px 24px 24px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-          alignItems: "flex-end",
-          textAlign: "right",
+          top: 20,
+          left: "50%",
+          transform: "translateX(-50%)",
+          textAlign: "center",
+          zIndex: 8,
         }}
       >
-        <div style={{ width: "100%" }}>
-          <div className="tag" style={{ color: "var(--attack)" }}>enemy action · fixed timeline</div>
-          <div style={{ fontFamily: "var(--display)", fontSize: 26 }}>
-            {enemyLearned ? action.name : "??? UNLEARNED"}
-          </div>
-        </div>
-
-        {/* the enemy's authored diagram — one pulse to one resolution beat */}
-        <div style={{ width: "100%", height: 150, marginTop: 4 }}>
-          <EnemyDiagram
-            action={action}
-            now={now}
-            leadIn={LEAD_IN}
-            beatMs={BEAT_MS}
-            firing={firing}
-            sidestepped={sidestepped}
-            learned={enemyLearned}
-          />
-        </div>
-        <div className="tag" style={{ color: "var(--ink-dim)", maxWidth: 260 }}>
-          all {action.instances} shots resolve on one beat — one timing to answer
+        <div className="tag">beat</div>
+        <div style={{ fontFamily: "var(--display)", fontSize: 34, lineHeight: 1 }}>
+          {counting ? "—" : displayBeat}
+          <span className="dim" style={{ fontSize: 16 }}> / {ability.beats}</span>
         </div>
       </div>
 
-      {/* PLAYER SIDE (lower-left) */}
-      <div
+      {/* PLAYER SIDE — left */}
+      <section
         style={{
           position: "absolute",
           top: 0,
           left: 0,
-          width: "58%",
+          width: "50%",
           height: "100%",
-          padding: "70px 20px 24px 32px",
+          padding: "64px 18px 44px 34px",
           display: "flex",
           flexDirection: "column",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <div>
-            <div className="tag" style={{ color: "var(--pulse)" }}>your phrase · performed</div>
-            <div style={{ fontFamily: "var(--display)", fontSize: 26 }}>{ability.name}</div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div className="tag">beat</div>
-            <div style={{ fontFamily: "var(--display)", fontSize: 40, lineHeight: 1, color: "var(--pulse)" }}>
-              {counting ? "…" : displayBeat}
-            </div>
-          </div>
+        <div>
+          <div className="tag" style={{ color: "var(--pulse)" }}>you · performed</div>
+          <div className="display-title">{ability.name}</div>
         </div>
-
-        <div style={{ flex: 1, minHeight: 0, marginTop: 8 }}>
+        <div style={{ flex: 1, minHeight: 0, marginTop: 6 }}>
           <Diagram ability={ability} belt={belt} assignments={assignments} exec={exec} showKeys />
         </div>
-
-        <div className="tag" style={{ textAlign: "center" }}>
-          press the shown key as the ring snaps to the node · missed nodes just go dark
+        <div className="tag" style={{ textAlign: "center", opacity: 0.7 }}>
+          strike each key as its ring snaps shut
         </div>
-      </div>
+      </section>
+
+      {/* ENEMY SIDE — right, same grammar, mirrored */}
+      <section
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          width: "50%",
+          height: "100%",
+          padding: "64px 34px 44px 18px",
+          display: "flex",
+          flexDirection: "column",
+          textAlign: "right",
+        }}
+      >
+        <div>
+          <div className="tag" style={{ color: "var(--attack)" }}>enemy · fixed · authored</div>
+          <div className="display-title">{enemyLearned ? action.name : "??? UNLEARNED"}</div>
+        </div>
+        {/* mirror the layout so the FIRE node culminates at the seam,
+            reflecting the player's phrase across the split */}
+        <div style={{ flex: 1, minHeight: 0, marginTop: 6, transform: "scaleX(-1)" }}>
+          <Diagram ability={enemyDiagram} belt={[]} assignments={{}} exec={enemyExec} />
+        </div>
+        <div className="tag" style={{ opacity: 0.8, color: "var(--attack)" }}>
+          {enemyLearned
+            ? `fire ×${action.instances} · damage ${action.perHit[0].value} · move −${Math.abs(
+                action.onHit[0].value ?? 0
+              )} on hit`
+            : "effects unknown — one resolution beat"}
+        </div>
+      </section>
+
+      {/* §9.4 collision — the shots cross the seam on the FIRE beat */}
+      {firing &&
+        Array.from({ length: action.instances }).map((_, i) => (
+          <div
+            key={i}
+            className="missile-streak"
+            style={{
+              top: `${44 + (i - 1) * 6}%`,
+              // sidestep => veer up and fade past the player; else strike the seam
+              animationName: sidestepped ? "streak-miss" : "streak-hit",
+              animationDelay: `${i * 60}ms`,
+            }}
+          />
+        ))}
 
       {/* count-in banner */}
       {counting && (

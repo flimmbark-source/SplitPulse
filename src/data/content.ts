@@ -1,4 +1,4 @@
-import type { Ability, EnemyDef, MaterialDef } from "../types";
+import type { Ability, EnemyAction, EnemyDef, MaterialDef } from "../types";
 
 // ============================================================
 // PROTOTYPE CONTENT
@@ -112,3 +112,41 @@ export const CINDER_BATTERY: EnemyDef = {
     telegraph: "Three vents flare. Something fires on the third beat.",
   },
 };
+
+// ---- The enemy action, expressed in the SAME diagram grammar -----
+// A fixed, authored phrase the player reads but does not play (GDD §9.3):
+// charge nodes on the lead-up beats resolving into one FIRE node.
+export function actionToDiagram(action: EnemyAction): Ability {
+  const nodes: Ability["nodes"] = [];
+  const edges: [string, string][] = [];
+  // charge nodes on every beat before the resolution beat
+  for (let b = 1; b < action.beat; b++) {
+    const id = `enemy-charge-${b}`;
+    // mirror the player's zig-zag spacing so the two sides read as siblings
+    const x = 16 + ((b - 1) / Math.max(1, action.beat - 1)) * 68;
+    const y = b % 2 === 0 ? 60 : 36;
+    nodes.push({ id, beat: b, x, y, execKey: "", kind: "fixed" });
+    if (b > 1) edges.push([`enemy-charge-${b - 1}`, id]);
+  }
+  const fireId = "enemy-fire";
+  nodes.push({
+    id: fireId,
+    beat: action.beat,
+    x: 86,
+    y: action.beat % 2 === 0 ? 60 : 36,
+    execKey: "",
+    kind: "fixed",
+    fixedEffect: { keyword: "damage", value: action.perHit[0]?.value ?? 0 },
+  });
+  if (action.beat > 1) edges.push([`enemy-charge-${action.beat - 1}`, fireId]);
+  return {
+    id: `${action.id}-diagram`,
+    name: action.name,
+    blurb: "",
+    beats: action.beat,
+    nodes,
+    edges,
+  };
+}
+
+export const CINDER_BATTERY_DIAGRAM = actionToDiagram(CINDER_BATTERY.action);

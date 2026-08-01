@@ -87,7 +87,11 @@ export default function Diagram({
       {ability.nodes.map((n) => {
         const { effect, materialKey } = nodeEffect(n, assignments, belt);
         const color = effect ? KEYWORD_COLOR[effect.keyword] : "var(--ink-dim)";
-        const glyph = effect ? KEYWORD_GLYPH[effect.keyword] : n.slot?.toString() ?? "";
+        const glyph = effect
+          ? KEYWORD_GLYPH[effect.keyword]
+          : n.kind === "config"
+          ? n.slot?.toString() ?? ""
+          : "·"; // effect-less fixed node (e.g. an enemy charge beat)
         const selected = selectedNode === n.id;
         const st = exec?.nodeState[n.id];
         const ringP = exec?.ring[n.id] ?? -1;

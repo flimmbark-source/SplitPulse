@@ -285,7 +285,7 @@ export default function Approach() {
       <div className="hud" style={{ bottom: 20, left: "50%", transform: "translateX(-50%)", textAlign: "center", width: 320 }}>
         <div className="tag">closing distance — dodge with ← ↑ → ↓</div>
         <div className="meter" style={{ marginTop: 6 }}>
-          <span style={{ background: "linear-gradient(90deg,var(--pulse),var(--pulse-2))", transform: `scaleX(${distance / 100})` }} />
+          <span style={{ background: "linear-gradient(90deg,var(--pulse),var(--arcane))", transform: `scaleX(${distance / 100})` }} />
         </div>
         {distance > 82 && (
           <div

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "../store";
 import Diagram, { type ExecState } from "../components/Diagram";
+import EnemyDiagram from "../components/EnemyDiagram";
 import { nodeEffect } from "../game/nodes";
 import { resolveExchange } from "../game/resolve";
 import { CINDER_BATTERY } from "../data/content";
@@ -16,7 +17,8 @@ const END_PAD = 900;
 type Status = "pending" | "hit" | "miss";
 
 export default function Execute() {
-  const { abilities, selectedAbility, assignments, belt, commitExecution } = useGame();
+  const { abilities, selectedAbility, assignments, belt, enemyLearned, commitExecution } =
+    useGame();
   const ability = abilities[selectedAbility];
   const action = CINDER_BATTERY.action;
 
@@ -209,52 +211,27 @@ export default function Execute() {
           textAlign: "right",
         }}
       >
-        <div>
-          <div className="tag" style={{ color: "var(--attack)" }}>enemy timeline · fixed</div>
-          <div style={{ fontFamily: "var(--display)", fontSize: 26 }}>{action.name}</div>
-        </div>
-
-        {/* progress toward the FIRE beat */}
-        <div style={{ width: "100%", maxWidth: 300 }}>
-          <div className="meter" style={{ height: 14 }}>
-            <span
-              style={{
-                background: "linear-gradient(90deg, var(--move), var(--attack))",
-                transform: `scaleX(${Math.max(0, Math.min(1, (now - LEAD_IN) / (enemyResolve - LEAD_IN)))})`,
-              }}
-            />
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-            <span className="tag">prepare</span>
-            <span className="tag" style={{ color: "var(--attack)" }}>FIRE · beat {action.beat}</span>
+        <div style={{ width: "100%" }}>
+          <div className="tag" style={{ color: "var(--attack)" }}>enemy action · fixed timeline</div>
+          <div style={{ fontFamily: "var(--display)", fontSize: 26 }}>
+            {enemyLearned ? action.name : "??? UNLEARNED"}
           </div>
         </div>
 
-        {/* the three missiles */}
-        <div style={{ display: "flex", gap: 14, marginTop: 10 }}>
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: "50%",
-                border: "2px solid var(--move)",
-                background: firing ? "var(--hit)" : "rgba(255,157,84,0.15)",
-                boxShadow: firing ? "0 0 18px var(--hit)" : "none",
-                transform: firing
-                  ? sidestepped
-                    ? `translate(-140px, ${i * 8 - 8}px) scale(0.6)`
-                    : "translate(-40px,0) scale(1.2)"
-                  : "none",
-                opacity: firing && sidestepped ? 0 : 1,
-                transition: "all 0.55s cubic-bezier(.5,0,.2,1)",
-              }}
-            />
-          ))}
+        {/* the enemy's authored diagram — one pulse to one resolution beat */}
+        <div style={{ width: "100%", height: 150, marginTop: 4 }}>
+          <EnemyDiagram
+            action={action}
+            now={now}
+            leadIn={LEAD_IN}
+            beatMs={BEAT_MS}
+            firing={firing}
+            sidestepped={sidestepped}
+            learned={enemyLearned}
+          />
         </div>
         <div className="tag" style={{ color: "var(--ink-dim)", maxWidth: 260 }}>
-          all three shots resolve on one beat — one timing to answer
+          all {action.instances} shots resolve on one beat — one timing to answer
         </div>
       </div>
 

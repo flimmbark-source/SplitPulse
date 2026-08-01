@@ -167,7 +167,7 @@ export default function Diagram({
               </text>
             )}
 
-            {/* execution key + beat */}
+            {/* execution key */}
             {showKeys && (
               <text
                 x={n.x}
@@ -180,16 +180,6 @@ export default function Diagram({
                 {n.execKey}
               </text>
             )}
-            <text
-              x={n.x}
-              y={n.y + R + (showKeys ? 11 : 6)}
-              textAnchor="middle"
-              fontSize={3.4}
-              fill="var(--ink-dim)"
-              style={{ fontFamily: "var(--mono)" }}
-            >
-              beat {n.beat}
-            </text>
           </g>
         );
       })}

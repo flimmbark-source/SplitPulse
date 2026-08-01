@@ -45,10 +45,12 @@ design doc frames it: the physical world is *crude, low-resolution and unstable*
 the alchemical system is *precise, geometric and unnaturally clear*.
 
 - **Gather** — a keyboard-labelled point-and-click diorama on a timer.
-- **Approach** — a hand-rolled pseudo-3D first-person renderer drawn to a tiny
-  `320×180` buffer and scaled up nearest-neighbour for a PS1 look (fog, a
-  perspective grid, vertex snapping, incoming missiles with directional dodge
-  telegraphs).
+- **Approach** — a real low-poly 3D arena (React Three Fiber) rendered to a low
+  internal resolution and scaled up nearest-neighbour for a PS1 look. The player
+  is *carried along authored spline paths* through the space (no free steering);
+  a tracking camera holds the enemy in frame; hits knock you **back along the
+  route**; reaching the attack position opens the exchange. Dodges are relative
+  to your current facing, and each incoming shot shows a crisp dodge telegraph.
 - **Configure / Execute** — razor-sharp SVG diagrams layered over the world,
   with a diagonal split-screen showing your performed phrase against the enemy's
   fixed action timeline.
@@ -92,12 +94,15 @@ Everything visual *consumes* this timeline; nothing visual redefines it.
 
 ## Stack
 
-`Vite · TypeScript · React · Zustand · SVG · Canvas 2D · WebAudio`
+`Vite · TypeScript · React · Zustand · React Three Fiber / three / drei · SVG · WebAudio`
 
-The 3D approach is a bespoke Canvas renderer (no engine) so the PS1 aesthetic
-and the deterministic timeline stay fully under our control; the musical layer is
-a small procedural WebAudio synth so each node carries its own tone and misses
-leave audible holes — no audio assets required.
+The arena is React Three Fiber over three.js, driven by an authored segment
+graph of Catmull–Rom spline paths and named markers (`PATH_*`,
+`ATTACK_POSITION_*`, `CAMERA_LOOK_TARGET`) — no navmesh, no AI, just curves. The
+alchemical interface stays SVG layered over the world. The musical layer is a
+small procedural WebAudio synth so each node carries its own tone and misses
+leave audible holes — no audio assets required. The 3D chunk is code-split and
+loads only when the fight begins.
 
 ## Layout
 
@@ -106,6 +111,9 @@ src/
   data/content.ts     materials, abilities, the Cinder Battery
   game/resolve.ts     the deterministic exchange resolver (authority)
   game/nodes.ts       node → effect / colour / glyph helpers
+  arena/graph.ts      named markers + spline segment graph (authored traversal)
+  arena/Scene.tsx     low-poly environment, landmarks, enemy turret (R3F)
+  arena/ArenaRig.tsx  spline traversal, tracking camera, relative dodges, shots
   store.ts            Zustand game-state machine
   audio.ts            procedural WebAudio synth
   components/         Diagram (SVG), Toolbelt, EnemyPreview, Hud

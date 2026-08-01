@@ -1,10 +1,12 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { useGame } from "./store";
 import { unlockAudio } from "./audio";
 import Title from "./phases/Title";
 import Gather from "./phases/Gather";
-import Approach from "./phases/Approach";
 import Configure from "./phases/Configure";
+
+// the arena pulls in three/drei — load it only when the fight starts
+const Approach = lazy(() => import("./phases/Approach"));
 import Execute from "./phases/Execute";
 import Resolve from "./phases/Resolve";
 import EndScreen from "./phases/EndScreen";
@@ -33,7 +35,17 @@ export default function App() {
     <div className={`stage ${physical ? "world-physical" : "world-arcane"}`}>
       {phase === "title" && <Title />}
       {phase === "gather" && <Gather />}
-      {phase === "approach" && <Approach />}
+      {phase === "approach" && (
+        <Suspense
+          fallback={
+            <div className="center-col" style={{ position: "absolute", inset: 0, justifyContent: "center" }}>
+              <div className="tag blink">entering the arena…</div>
+            </div>
+          }
+        >
+          <Approach />
+        </Suspense>
+      )}
       {phase === "configure" && <Configure />}
       {phase === "execute" && <Execute />}
       {phase === "resolve" && <Resolve />}

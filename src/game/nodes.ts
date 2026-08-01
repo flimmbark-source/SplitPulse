@@ -1,25 +1,21 @@
-import type { AbilityNode, BeltMaterial, Effect, Keyword } from "../types";
+import type { AbilityNode, BeltMaterial, Effect } from "../types";
 import type { NodeAssignments } from "../store";
+import { KEYWORDS } from "./keywords";
 
-export const KEYWORD_COLOR: Record<Keyword, string> = {
-  attack: "var(--attack)",
-  defend: "var(--defend)",
-  poison: "var(--poison)",
-  sidestep: "var(--sidestep)",
-  guard: "var(--defend)",
-  move: "var(--move)",
-  damage: "var(--attack)",
+// Execution keys are standardised to WASD. The node's CIRCLE is coloured by
+// its key (so "press the violet key" maps to the violet ring); the ICON inside
+// keeps its keyword colour (so the effect stays legible). Two colour layers,
+// two meanings: key identity on the ring, effect identity on the glyph.
+export const KEY_COLOR: Record<string, string> = {
+  W: "#a98bff", // violet
+  A: "#67e8ff", // cyan
+  S: "#ff6ad5", // magenta
+  D: "#ffb648", // amber
 };
 
-export const KEYWORD_GLYPH: Record<Keyword, string> = {
-  attack: "▲",
-  defend: "◆",
-  poison: "✦",
-  sidestep: "⟳",
-  guard: "◈",
-  move: "»",
-  damage: "✕",
-};
+export function keyColor(execKey: string | undefined, fallback: string): string {
+  return execKey && KEY_COLOR[execKey] ? KEY_COLOR[execKey] : fallback;
+}
 
 /** the effect a node will produce given the current configuration */
 export function nodeEffect(
@@ -38,6 +34,5 @@ export function nodeEffect(
 export function effectLabel(e?: Effect): string {
   if (!e) return "—";
   const v = e.value !== undefined ? ` ${Math.abs(e.value)}` : "";
-  const name = e.keyword.charAt(0).toUpperCase() + e.keyword.slice(1);
-  return `${name}${v}`;
+  return `${KEYWORDS[e.keyword].label}${v}`;
 }

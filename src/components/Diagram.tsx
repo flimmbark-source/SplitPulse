@@ -1,6 +1,7 @@
 import type { Ability, BeltMaterial } from "../types";
 import type { NodeAssignments } from "../store";
-import { KEYWORD_COLOR, KEYWORD_GLYPH, nodeEffect } from "../game/nodes";
+import { keyColor, nodeEffect } from "../game/nodes";
+import { KEYWORDS } from "../game/keywords";
 
 export interface ExecState {
   nodeState: Record<string, "pending" | "hit" | "miss">;
@@ -86,9 +87,11 @@ export default function Diagram({
       {/* nodes */}
       {ability.nodes.map((n) => {
         const { effect, materialKey } = nodeEffect(n, assignments, belt);
-        const color = effect ? KEYWORD_COLOR[effect.keyword] : "var(--ink-dim)";
+        // glyph colour = effect identity (keyword); circle colour = key identity
+        const iconColor = effect ? KEYWORDS[effect.keyword].color : "var(--ink-dim)";
+        const color = keyColor(n.execKey, iconColor);
         const glyph = effect
-          ? KEYWORD_GLYPH[effect.keyword]
+          ? KEYWORDS[effect.keyword].glyph
           : n.kind === "config"
           ? n.slot?.toString() ?? ""
           : "·"; // effect-less fixed node (e.g. an enemy charge beat)
@@ -140,18 +143,19 @@ export default function Diagram({
               strokeWidth={n.kind === "fixed" ? 1.6 : 1.1}
               filter={effect || st === "hit" ? "url(#glow)" : undefined}
             />
-            {/* fixed nodes get a second ring to mark permanence */}
+            {/* fixed nodes get a second ring, in the EFFECT colour, to mark
+                permanence and keep the keyword identity on the node */}
             {n.kind === "fixed" && (
-              <circle cx={n.x} cy={n.y} r={R - 2.2} fill="none" stroke={color} strokeWidth={0.5} opacity={0.6} />
+              <circle cx={n.x} cy={n.y} r={R - 2.2} fill="none" stroke={iconColor} strokeWidth={0.6} opacity={0.7} />
             )}
 
-            {/* glyph */}
+            {/* glyph — coloured by the EFFECT (keyword), not the key */}
             <text
               x={n.x}
               y={n.y + 2.6}
               textAnchor="middle"
               fontSize={7}
-              fill={st === "hit" ? "#0c0c16" : color}
+              fill={st === "hit" ? "#0c0c16" : iconColor}
               style={{ fontFamily: "var(--mono)", fontWeight: 700 }}
             >
               {glyph}
@@ -164,21 +168,21 @@ export default function Diagram({
                 y={n.y - R - 2}
                 textAnchor="middle"
                 fontSize={4.5}
-                fill={materialKey ? color : "var(--ink-dim)"}
+                fill={materialKey ? iconColor : "var(--ink-dim)"}
                 style={{ fontFamily: "var(--mono)" }}
               >
                 slot {n.slot}
               </text>
             )}
 
-            {/* execution key */}
+            {/* execution key — coloured by the KEY (matches the circle) */}
             {showKeys && (
               <text
                 x={n.x}
                 y={n.y + R + 6}
                 textAnchor="middle"
-                fontSize={5}
-                fill="var(--ink)"
+                fontSize={5.5}
+                fill={color}
                 style={{ fontFamily: "var(--mono)", fontWeight: 700 }}
               >
                 {n.execKey}

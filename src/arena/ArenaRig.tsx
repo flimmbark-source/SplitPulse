@@ -157,12 +157,21 @@ export default function ArenaRig({
         return;
       }
       g.visible = true;
-      const p = (now - s.born) / (s.impact - s.born);
-      // fly from the enemy vents toward the captured/target point, homing slightly
-      s.target.lerp(camera.position, 0.02);
-      g.position.copy(ENEMY_ORIGIN).lerp(s.target, Math.min(1, p));
-      const scale = 0.25 + p * 0.5;
-      g.scale.setScalar(scale);
+      const p = Math.min(1, (now - s.born) / (s.impact - s.born));
+      // TRACK then COMMIT: home hard onto the player for most of the flight,
+      // then lock the aim just before impact so a dodge visibly slips it.
+      const COMMIT = 0.82;
+      if (p < COMMIT) {
+        // ease the homing strength up so it noticeably curves toward you
+        const homing = 0.12 + p * 0.5;
+        s.target.lerp(camera.position, homing);
+      }
+      // accelerating approach (ease-in) reads as a real projectile
+      const travel = p * p;
+      g.position.copy(ENEMY_ORIGIN).lerp(s.target, travel);
+      // point the shot along its own velocity, and swell as it nears
+      g.lookAt(s.target);
+      g.scale.setScalar(0.28 + travel * 0.5);
 
       // telegraph arrow
       if (arrow) {

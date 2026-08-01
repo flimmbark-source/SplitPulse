@@ -4,10 +4,14 @@ import type {
   ResolutionLine,
   ResolvedNode,
 } from "../types";
+import { KEYWORDS, newAcc } from "./keywords";
 
 // ============================================================
 // The exchange resolver.
-// Implements the rules fixed in the design doc §6.3 / §8:
+// Player-side effects are folded into an accumulator through the
+// keyword registry (game/keywords.ts) — the resolver never
+// switches on keyword names, so new verbs are added there, not
+// here. The enemy-vs-defence interaction stays centralised:
 //  - Sidestep at the action's beat negates the whole action.
 //  - Defend is a numeric pool allocated across incoming hits.
 //  - A fully prevented hit does not trigger its on-hit effects.
@@ -27,30 +31,14 @@ export function resolveExchange(
 
   const landed = resolved.filter((r) => r.success && r.effect);
 
-  // --- aggregate player output ---
-  let attack = 0;
-  let poison = 0;
-  let defendPool = 0;
-  let sidestepAtActionBeat = false;
+  // --- fold player output through the keyword registry ---
+  const acc = newAcc();
+  for (const r of landed) KEYWORDS[r.effect!.keyword].apply?.(acc, r.effect!.value ?? 0, r);
 
-  for (const r of landed) {
-    const e = r.effect!;
-    switch (e.keyword) {
-      case "attack":
-        attack += e.value ?? 0;
-        break;
-      case "poison":
-        poison += e.value ?? 0;
-        break;
-      case "defend":
-      case "guard":
-        defendPool += e.value ?? 0;
-        break;
-      case "sidestep":
-        if (r.node.beat === action.beat) sidestepAtActionBeat = true;
-        break;
-    }
-  }
+  const attack = acc.attack;
+  const poison = acc.poison;
+  const defendPool = acc.defend;
+  const sidestepAtActionBeat = acc.sidestepBeats.has(action.beat);
 
   if (attack > 0) good(`Attack ${attack} — strike lands on the Battery.`);
   if (poison > 0) good(`Poison ${poison} — rot takes hold.`);
@@ -104,6 +92,14 @@ export function resolveExchange(
     neutralized = hitsThatLanded === 0;
     if (neutralized && defendPool > 0)
       good("Every shot absorbed — the action is fully neutralised.");
+  }
+
+  // a player-side Move keyword resists forced movement (dormant until a
+  // material provides it, but wired through the registry accumulator)
+  if (acc.selfMove > 0 && pushedBack > 0) {
+    const braced = Math.min(pushedBack, acc.selfMove);
+    pushedBack -= braced;
+    good(`Move ${acc.selfMove} — braced against ${braced} of the knockback.`);
   }
 
   const chainEarned = neutralized;

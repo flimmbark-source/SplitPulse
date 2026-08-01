@@ -161,8 +161,8 @@ export default function Diagram({
               {glyph}
             </text>
 
-            {/* slot number for config nodes (below) */}
-            {n.kind === "config" && (
+            {/* slot number for config nodes (only while configuring) */}
+            {n.kind === "config" && !showKeys && (
               <text
                 x={n.x}
                 y={n.y - R - 2}
@@ -175,18 +175,31 @@ export default function Diagram({
               </text>
             )}
 
-            {/* execution key — coloured by the KEY (matches the circle) */}
-            {showKeys && (
-              <text
-                x={n.x}
-                y={n.y + R + 6}
-                textAnchor="middle"
-                fontSize={5.5}
-                fill={color}
-                style={{ fontFamily: "var(--mono)", fontWeight: 700 }}
-              >
-                {n.execKey}
-              </text>
+            {/* the button — a keycap ABOVE the circle, coloured to match its
+                key so "press the violet W" maps to the violet ring below it */}
+            {showKeys && n.execKey && (
+              <g>
+                <rect
+                  x={n.x - 5}
+                  y={n.y - R - 13}
+                  width={10}
+                  height={8}
+                  rx={1.8}
+                  fill="#0c0c16"
+                  stroke={color}
+                  strokeWidth={0.9}
+                />
+                <text
+                  x={n.x}
+                  y={n.y - R - 6.6}
+                  textAnchor="middle"
+                  fontSize={5.4}
+                  fill={color}
+                  style={{ fontFamily: "var(--mono)", fontWeight: 700 }}
+                >
+                  {n.execKey}
+                </text>
+              </g>
             )}
           </g>
         );

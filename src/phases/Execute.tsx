@@ -35,11 +35,10 @@ export default function Execute() {
   const startRef = useRef(0);
   const finishedRef = useRef(false);
   const firedRef = useRef(false);
+  const outcomeRef = useRef(false);
   const lastBeatTickRef = useRef(0);
 
   const [now, setNow] = useState(0);
-  const [firing, setFiring] = useState(false);
-  const [sidestepped, setSidestepped] = useState(false);
   const [flash, setFlash] = useState<null | "hit" | "avoid">(null);
   const [enemyFx, setEnemyFx] = useState<
     null | { dmg: number; push: number; sidestep: boolean; neutral: boolean }
@@ -84,7 +83,7 @@ export default function Execute() {
           case "attack": sfx.attack(); break;
           case "defend": case "guard": sfx.defend(); break;
           case "poison": sfx.poison(); break;
-          case "sidestep": sfx.sidestep(); setSidestepped(true); break;
+          case "sidestep": sfx.sidestep(); break;
           default: sfx.hit(node.beat);
         }
       }
@@ -123,17 +122,18 @@ export default function Execute() {
         }
       }
 
-      // enemy fire
+      // enemy fires on its beat — this is the visual only
       if (!firedRef.current && t >= enemyResolve) {
         firedRef.current = true;
-        setFiring(true);
-        // did a sidestep land on the action's beat?
-        const ss = nodes.find(
-          (n) => n.beat === action.beat && n.fixedEffect?.keyword === "sidestep"
-        );
-        const avoided = ss ? statusRef.current[ss.id] === "hit" : false;
-        setSidestepped(avoided);
-        // resolve the enemy action live and show what it did to you, right now
+        sfx.enemyFire();
+      }
+
+      // the OUTCOME is only decided once the defensive window has closed
+      // (the Sidestep can still land up to WINDOW ms after the beat). Only
+      // then do we compute and show the real numbers — so the popup can never
+      // contradict the chain result.
+      if (firedRef.current && !outcomeRef.current && t >= enemyResolve + WINDOW + 60) {
+        outcomeRef.current = true;
         const snapshot: ResolvedNode[] = ability.nodes.map((n) => {
           const { effect, materialKey } = nodeEffect(n, assignments, belt);
           return { node: n, effect, materialKey, success: statusRef.current[n.id] === "hit" };
@@ -146,11 +146,12 @@ export default function Execute() {
           neutral: res.actionNeutralized,
         });
         setTimeout(() => setEnemyFx(null), 1500);
-        if (avoided || res.actionNeutralized) {
+        if (res.sidestepped || res.actionNeutralized) {
           setFlash("avoid");
+          sfx.sidestep();
         } else {
           setFlash("hit");
-          sfx.enemyFire();
+          sfx.impact();
         }
         setTimeout(() => setFlash(null), 400);
       }
@@ -306,16 +307,16 @@ export default function Execute() {
         </div>
       </section>
 
-      {/* §9.4 collision — the shots cross the seam on the FIRE beat */}
-      {firing &&
+      {/* §9.4 collision — the shots cross the seam once the outcome resolves,
+          veering off if you slipped the action */}
+      {enemyFx &&
         Array.from({ length: action.instances }).map((_, i) => (
           <div
             key={i}
             className="missile-streak"
             style={{
               top: `${44 + (i - 1) * 6}%`,
-              // sidestep => veer up and fade past the player; else strike the seam
-              animationName: sidestepped ? "streak-miss" : "streak-hit",
+              animationName: enemyFx.sidestep || enemyFx.neutral ? "streak-miss" : "streak-hit",
               animationDelay: `${i * 60}ms`,
             }}
           />

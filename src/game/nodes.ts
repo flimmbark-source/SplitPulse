@@ -6,11 +6,12 @@ import { KEYWORDS } from "./keywords";
 // its key (so "press the violet key" maps to the violet ring); the ICON inside
 // keeps its keyword colour (so the effect stays legible). Two colour layers,
 // two meanings: key identity on the ring, effect identity on the glyph.
+// Xbox face-button colour associations, per request.
 export const KEY_COLOR: Record<string, string> = {
-  W: "#a98bff", // violet
-  A: "#67e8ff", // cyan
-  S: "#ff6ad5", // magenta
-  D: "#ffb648", // amber
+  W: "#ffce3a", // yellow
+  A: "#4f9dff", // blue
+  S: "#5ad36a", // green
+  D: "#ff5566", // red
 };
 
 export function keyColor(execKey: string | undefined, fallback: string): string {

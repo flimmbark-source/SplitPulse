@@ -178,23 +178,38 @@ export default function Diagram({
               <circle cx={n.x} cy={n.y} r={R - 2.2} fill="none" stroke={iconColor} strokeWidth={0.6} opacity={0.7} />
             )}
 
-            {/* glyph — coloured by the EFFECT (keyword), not the key */}
+            {/* INSIDE the circle: the KEY to press (falls back to the glyph
+                for keyless nodes, e.g. the enemy diagram) */}
             <text
               x={n.x}
               y={n.y + 2.6}
               textAnchor="middle"
-              fontSize={7}
-              fill={st === "hit" ? "#0c0c16" : iconColor}
+              fontSize={n.execKey ? 7 : 7}
+              fill={st === "hit" ? "#0c0c16" : n.execKey ? color : iconColor}
               style={{ fontFamily: "var(--mono)", fontWeight: 700 }}
             >
-              {glyph}
+              {n.execKey || glyph}
             </text>
 
-            {/* slot number for config nodes (only while configuring) */}
+            {/* ABOVE the circle, tight: the effect ICON in its keyword colour */}
+            {n.execKey && effect && (
+              <text
+                x={n.x}
+                y={n.y - R - 2.4}
+                textAnchor="middle"
+                fontSize={6}
+                fill={iconColor}
+                style={{ fontFamily: "var(--mono)", fontWeight: 700 }}
+              >
+                {KEYWORDS[effect.keyword].glyph}
+              </text>
+            )}
+
+            {/* slot number for config nodes (below, only while configuring) */}
             {n.kind === "config" && !showKeys && (
               <text
                 x={n.x}
-                y={n.y - R - 2}
+                y={n.y + R + 6}
                 textAnchor="middle"
                 fontSize={4.5}
                 fill={materialKey ? iconColor : "var(--ink-dim)"}
@@ -202,33 +217,6 @@ export default function Diagram({
               >
                 slot {n.slot}
               </text>
-            )}
-
-            {/* the button — a keycap ABOVE the circle, coloured to match its
-                key so "press the violet W" maps to the violet ring below it */}
-            {showKeys && n.execKey && (
-              <g>
-                <rect
-                  x={n.x - 5}
-                  y={n.y - R - 13}
-                  width={10}
-                  height={8}
-                  rx={1.8}
-                  fill="#0c0c16"
-                  stroke={color}
-                  strokeWidth={0.9}
-                />
-                <text
-                  x={n.x}
-                  y={n.y - R - 6.6}
-                  textAnchor="middle"
-                  fontSize={5.4}
-                  fill={color}
-                  style={{ fontFamily: "var(--mono)", fontWeight: 700 }}
-                >
-                  {n.execKey}
-                </text>
-              </g>
             )}
           </g>
         );

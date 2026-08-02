@@ -46,9 +46,6 @@ interface GameState {
   lastResolution: Resolution | null;
   lastResolved: ResolvedNode[];
 
-  // approach dodge grid (3×3): player cell + lit danger cells
-  grid: { col: number; row: number; danger: number[]; strike: number };
-
   // actions
   setPhase: (p: Phase) => void;
   startRun: () => void;
@@ -66,7 +63,6 @@ interface GameState {
   takeApproachHit: (dmg: number, push: number) => void;
   gainDistance: (d: number) => void;
   reachAttackRange: () => void;
-  setGrid: (p: Partial<{ col: number; row: number; danger: number[]; strike: number }>) => void;
 }
 
 const BELT_KEYS = ["Q", "W", "E", "R", "T", "Y"];
@@ -95,8 +91,6 @@ export const useGame = create<GameState>((set, get) => ({
 
   lastResolution: null,
   lastResolved: [],
-
-  grid: { col: 1, row: 1, danger: [], strike: 0 },
 
   setPhase: (p) => set({ phase: p }),
 
@@ -232,8 +226,6 @@ export const useGame = create<GameState>((set, get) => ({
     set((s) => ({ distance: Math.min(100, s.distance + d) })),
 
   reachAttackRange: () => set({ phase: "configure", distance: 100 }),
-
-  setGrid: (p) => set((s) => ({ grid: { ...s.grid, ...p } })),
 }));
 
 // dev-only debug handle for manual phase jumps / screenshots

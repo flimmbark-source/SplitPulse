@@ -3,7 +3,6 @@ import { Canvas } from "@react-three/fiber";
 import { NoToneMapping } from "three";
 import Scene from "../arena/Scene";
 import ArenaRig from "../arena/ArenaRig";
-import GridHud from "../components/GridHud";
 import { useGame } from "../store";
 
 export default function Approach() {
@@ -76,11 +75,9 @@ export default function Approach() {
         <div style={{ position: "absolute", top: 6, left: 0, height: 2, width: 14, background: "var(--ink)" }} />
       </div>
 
-      <GridHud />
-
       {/* HUD */}
-      <div className="hud" style={{ bottom: 22, left: "50%", transform: "translateX(-50%)", textAlign: "center", width: 340, zIndex: 22 }}>
-        <div className="tag">carried through the arena — reach attack range</div>
+      <div className="hud" style={{ bottom: 22, left: "50%", transform: "translateX(-50%)", textAlign: "center", width: 360, zIndex: 22 }}>
+        <div className="tag">slide through the gaps in the wave — ← ↑ → ↓</div>
         <div className="meter" style={{ marginTop: 6 }}>
           <span style={{ background: "linear-gradient(90deg,var(--pulse),var(--arcane))", transform: `scaleX(${distance / 100})` }} />
         </div>

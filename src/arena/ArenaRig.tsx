@@ -5,20 +5,21 @@ import { CAMERA_LOOK_TARGET, GRID_PATTERNS, PATTERNS, SEGMENTS } from "./graph";
 import { useGame } from "../store";
 import { sfx } from "../audio";
 
-// the authored approach, as an ordered run of path pieces. Advancing carries
-// you forward; a hit knocks you BACK along the same route (never a full reset).
+// the authored approach, as an ordered run of path pieces.
 const ORDER = ["approach_a", "approach_b", "rush"] as const;
 const KNOCKBACK = 0.6;
 
-// ---- 3×3 dodge grid --------------------------------------------------------
-// The player IS a node on a 3×3 grid. Enemy attacks light up cells; the player
-// slides their node (arrow keys) to an unlit cell before the strike lands.
-const COLS = 3;
-const CELL_X = 1.45; // camera offset per column
-const CELL_Y = 1.15; // camera offset per row
-const FAR_DIST = 9; // how far ahead the lit orbs telegraph
-const FAR_SPREAD = 2.7; // orb fan-out at the telegraph plane
-const POOL = 6; // max lit cells shown at once
+// ---- dodge waves -----------------------------------------------------------
+// Each enemy attack re-instantiates a 3×3 grid CENTRED ON THE PLAYER: the
+// player sits at centre and the attack fills a set of cells. The filled cells
+// are shown as a WALL OF BLOCKS flying at the player — its shape (where the
+// gaps are) tells you which way to slide. No literal grid is drawn.
+const CELL_X = 1.7; // lateral spacing (also camera offset per column)
+const CELL_Y = 1.2; // vertical spacing
+const FAR_DIST = 11; // where the wall telegraphs
+const NEAR_DIST = 0.4; // where it reaches the player plane
+const PANEL = 1.45; // block size (< spacing so gaps read)
+const POOL = 9;
 
 const DIR_MOVE: Record<string, [number, number]> = {
   ArrowLeft: [-1, 0],
@@ -28,7 +29,7 @@ const DIR_MOVE: Record<string, [number, number]> = {
 };
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-const clampCell = (v: number) => Math.max(0, Math.min(COLS - 1, v));
+const clamp1 = (v: number) => Math.max(-1, Math.min(1, v));
 
 interface Attack {
   active: boolean;
@@ -46,51 +47,40 @@ export default function ArenaRig({
   onAvoid: () => void;
 }) {
   const camera = useThree((s) => s.camera);
-  const orbs = useRef<(Group | null)[]>([]);
+  const blocks = useRef<(Group | null)[]>([]);
 
-  // sim state
   const gRef = useRef(0);
-  const col = useRef(1);
-  const row = useRef(1);
-  const curOx = useRef(0);
-  const curOy = useRef(0);
+  const relCol = useRef(0); // player offset from the wave centre, in cells
+  const relRow = useRef(0);
+  const camOx = useRef(0);
+  const camOy = useRef(0);
   const fireTimer = useRef(0);
   const strikeCount = useRef(0);
   const attack = useRef<Attack>({ active: false, born: 0, impact: 0, cells: [], resolved: true });
   const done = useRef(false);
 
   const scratch = useMemo(
-    () => ({
-      pos: new Vector3(),
-      fwd: new Vector3(),
-      right: new Vector3(),
-      up: new Vector3(),
-      a: new Vector3(),
-      b: new Vector3(),
-    }),
+    () => ({ pos: new Vector3(), fwd: new Vector3(), right: new Vector3(), up: new Vector3() }),
     []
   );
   const worldUp = useMemo(() => new Vector3(0, 1, 0), []);
 
-  // reset the grid on entering the arena
   useEffect(() => {
-    col.current = 1;
-    row.current = 1;
-    useGame.getState().setGrid({ col: 1, row: 1, danger: [], strike: 0 });
+    relCol.current = 0;
+    relRow.current = 0;
   }, []);
 
-  // ---- input: slide the node across the grid ----
+  // ---- input: slide relative to the current wave ----
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       const mv = DIR_MOVE[e.key];
       if (!mv) return;
       e.preventDefault();
-      const nc = clampCell(col.current + mv[0]);
-      const nr = clampCell(row.current + mv[1]);
-      if (nc !== col.current || nr !== row.current) {
-        col.current = nc;
-        row.current = nr;
-        useGame.getState().setGrid({ col: nc, row: nr });
+      const nc = clamp1(relCol.current + mv[0]);
+      const nr = clamp1(relRow.current + mv[1]);
+      if (nc !== relCol.current || nr !== relRow.current) {
+        relCol.current = nc;
+        relRow.current = nr;
         sfx.dodge();
       }
     };
@@ -99,21 +89,12 @@ export default function ArenaRig({
   }, []);
 
   const startAttack = (now: number, lead: number) => {
+    // re-instantiate the grid centred on the player
+    relCol.current = 0;
+    relRow.current = 0;
     const cells = GRID_PATTERNS[(Math.random() * GRID_PATTERNS.length) | 0].slice(0, POOL);
     attack.current = { active: true, born: now, impact: now + lead, cells, resolved: false };
-    useGame.getState().setGrid({ danger: cells });
     sfx.enemyFire();
-  };
-
-  // world position of a grid cell, offset `spread` from the path point
-  const cellVec = (out: Vector3, cell: number, aheadDist: number, spread: number) => {
-    const c = cell % COLS;
-    const r = (cell / COLS) | 0;
-    out.copy(scratch.pos);
-    if (aheadDist) out.addScaledVector(scratch.fwd, aheadDist);
-    out.addScaledVector(scratch.right, (c - 1) * spread);
-    out.addScaledVector(scratch.up, (1 - r) * spread);
-    return out;
   };
 
   useFrame((state, dtRaw) => {
@@ -127,23 +108,23 @@ export default function ArenaRig({
     gRef.current += dt / S.duration;
     const reachedEnd = gRef.current >= ORDER.length;
     const localT = Math.min(1, gRef.current - idx);
-    S.curve.getPoint(localT, scratch.pos); // -> scratch.pos = path point
+    S.curve.getPoint(localT, scratch.pos);
 
-    // ---- camera basis (facing the enemy) ----
+    // ---- camera basis ----
     scratch.fwd.copy(CAMERA_LOOK_TARGET).sub(scratch.pos).normalize();
     scratch.right.copy(scratch.fwd).cross(worldUp).normalize();
     scratch.up.copy(scratch.right).cross(scratch.fwd).normalize();
 
-    // ---- smooth the camera toward the player's grid cell ----
-    const tox = (col.current - 1) * CELL_X;
-    const toy = (1 - row.current) * CELL_Y;
-    const k = Math.min(1, dt * 12);
-    curOx.current += (tox - curOx.current) * k;
-    curOy.current += (toy - curOy.current) * k;
+    // ---- smooth camera toward the player's cell (centre = 0) ----
+    const tox = relCol.current * CELL_X;
+    const toy = -relRow.current * CELL_Y;
+    const k = Math.min(1, dt * 11);
+    camOx.current += (tox - camOx.current) * k;
+    camOy.current += (toy - camOy.current) * k;
     camera.position
       .copy(scratch.pos)
-      .addScaledVector(scratch.right, curOx.current)
-      .addScaledVector(scratch.up, curOy.current);
+      .addScaledVector(scratch.right, camOx.current)
+      .addScaledVector(scratch.up, camOy.current);
     camera.lookAt(CAMERA_LOOK_TARGET);
 
     // ---- schedule attacks ----
@@ -155,46 +136,41 @@ export default function ArenaRig({
       }
     }
 
-    // ---- drive the lit orbs + resolve the strike ----
+    // ---- drive the wall of blocks + resolve ----
     const at = attack.current;
-    let hitThisFrame = false;
     const p = at.active ? clamp01((now - at.born) / (at.impact - at.born)) : 0;
-    const rush = p < 0.62 ? 0 : (p - 0.62) / 0.38;
+    const dist = FAR_DIST + (NEAR_DIST - FAR_DIST) * (p * p);
+    let hitThisFrame = false;
 
     for (let i = 0; i < POOL; i++) {
-      const orb = orbs.current[i];
-      if (!orb) continue;
+      const g = blocks.current[i];
+      if (!g) continue;
       if (at.active && i < at.cells.length) {
         const cell = at.cells[i];
-        const far = cellVec(scratch.a, cell, FAR_DIST, FAR_SPREAD);
-        // near anchor: where a player standing in this cell would be
-        const c = cell % COLS;
-        const r = (cell / COLS) | 0;
-        const near = scratch.b
+        const c = cell % 3;
+        const r = (cell / 3) | 0;
+        g.position
           .copy(scratch.pos)
+          .addScaledVector(scratch.fwd, dist)
           .addScaledVector(scratch.right, (c - 1) * CELL_X)
           .addScaledVector(scratch.up, (1 - r) * CELL_Y);
-        orb.position.copy(far).lerp(near, rush * rush);
-        orb.visible = true;
-        const s = 0.5 + rush * 0.9 + Math.sin(now * 0.02) * 0.05;
-        orb.scale.setScalar(s);
+        g.visible = true;
+        const grow = 0.6 + p * 0.6;
+        g.scale.setScalar(grow);
       } else {
-        orb.visible = false;
+        g.visible = false;
       }
     }
 
     if (at.active && !at.resolved && p >= 1) {
       at.resolved = true;
       at.active = false;
-      const playerCell = row.current * COLS + col.current;
-      const struck = at.cells.includes(playerCell);
       strikeCount.current += 1;
-      useGame.getState().setGrid({ danger: [], strike: strikeCount.current });
-      if (struck) {
-        hitThisFrame = true;
-      } else {
-        onAvoid();
-      }
+      const struck = at.cells.some(
+        (cell) => cell % 3 === relCol.current + 1 && ((cell / 3) | 0) === relRow.current + 1
+      );
+      if (struck) hitThisFrame = true;
+      else onAvoid();
     }
 
     if (hitThisFrame) {
@@ -212,13 +188,14 @@ export default function ArenaRig({
     // ---- progress meter ----
     useGame.setState({ distance: Math.min(100, (gRef.current / ORDER.length) * 100) });
 
-    // ---- dev telemetry: current danger cells + player cell (for tests) ----
+    // ---- dev telemetry (for tests) ----
     if (import.meta.env.DEV) {
-      (window as unknown as { __arena: { danger: number[]; col: number; row: number } }).__arena = {
-        danger: at.active && !at.resolved ? at.cells : [],
-        col: col.current,
-        row: row.current,
-      };
+      (window as unknown as { __arena: { danger: number[]; relCol: number; relRow: number } }).__arena =
+        {
+          danger: at.active && !at.resolved ? at.cells : [],
+          relCol: relCol.current,
+          relRow: relRow.current,
+        };
     }
 
     // ---- arrival opens the attack window ----
@@ -232,14 +209,14 @@ export default function ArenaRig({
   return (
     <>
       {Array.from({ length: POOL }).map((_, i) => (
-        <group key={i} ref={(el) => (orbs.current[i] = el)} visible={false}>
+        <group key={i} ref={(el) => (blocks.current[i] = el)} visible={false}>
           <mesh>
-            <sphereGeometry args={[0.55, 8, 6]} />
-            <meshStandardMaterial color="#ff6a4d" emissive="#ff3a2a" emissiveIntensity={2.4} toneMapped={false} flatShading />
+            <boxGeometry args={[PANEL, PANEL, PANEL]} />
+            <meshStandardMaterial color="#ff5a4a" emissive="#ff2a1a" emissiveIntensity={2} toneMapped={false} flatShading />
           </mesh>
-          <mesh scale={1.8}>
-            <sphereGeometry args={[0.55, 8, 6]} />
-            <meshBasicMaterial color="#ff5566" transparent opacity={0.16} />
+          <mesh scale={1.12}>
+            <boxGeometry args={[PANEL, PANEL, PANEL]} />
+            <meshBasicMaterial color="#ff5566" wireframe transparent opacity={0.5} />
           </mesh>
         </group>
       ))}

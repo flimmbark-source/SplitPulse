@@ -140,13 +140,47 @@ export const ABILITIES: Ability[] = [
       { id: "ps-c2", beat: 4, key: "D", kind: "config", slot: 2 },
     ]
   ),
+  gesture(
+    "rising-guard",
+    "Rising Guard",
+    "Answer early: Sidestep on beat 1, then strike out. Counters a beat-1 action.",
+    3,
+    [
+      { id: "rg-side", beat: 1, key: "W", kind: "fixed", fixedEffect: { keyword: "sidestep" } },
+      { id: "rg-atk", beat: 2, key: "D", kind: "fixed", fixedEffect: { keyword: "attack", value: 2 } },
+      { id: "rg-c1", beat: 3, key: "S", kind: "config", slot: 1 },
+    ]
+  ),
+  gesture(
+    "late-veil",
+    "Late Veil",
+    "Hold, colour the strike, and Sidestep late on beat 4. Counters a beat-4 action.",
+    4,
+    [
+      { id: "lv-atk", beat: 1, key: "W", kind: "fixed", fixedEffect: { keyword: "attack", value: 2 } },
+      { id: "lv-c1", beat: 2, key: "A", kind: "config", slot: 1 },
+      { id: "lv-c2", beat: 3, key: "S", kind: "config", slot: 2 },
+      { id: "lv-side", beat: 4, key: "D", kind: "fixed", fixedEffect: { keyword: "sidestep" } },
+    ]
+  ),
 ];
 
 // ---- Enemy -----------------------------------------------------
 
-// All actions resolve on beat 3 (answerable by Prism Step's Sidestep), but
-// each DOES something different, so chained exchanges vary.
+// Each action differs in BOTH effect AND timing (resolution beat). You read
+// the announced beat and pick the ability whose Sidestep lands on it — or, for
+// a damage action, block it with Defend on any beat.
 export const CINDER_ACTIONS: EnemyAction[] = [
+  {
+    // early, unblockable slam — only a beat-1 Sidestep avoids it
+    id: "cb-shove",
+    name: "Iron Shove",
+    beat: 1,
+    instances: 1,
+    perHit: [{ keyword: "move", value: -3 }],
+    onHit: [],
+    telegraph: "The battery lurches — a heavy slam lands on the very first beat.",
+  },
   {
     id: "cb-volley",
     name: "Cinder Volley",
@@ -157,24 +191,14 @@ export const CINDER_ACTIONS: EnemyAction[] = [
     telegraph: "Three vents flare. Something fires on the third beat.",
   },
   {
-    // pure knockback — no damage, so Defend does nothing; only Sidestep avoids it
-    id: "cb-shove",
-    name: "Iron Shove",
-    beat: 3,
-    instances: 1,
-    perHit: [{ keyword: "move", value: -3 }],
-    onHit: [],
-    telegraph: "The battery lurches. A single heavy slam is coming.",
-  },
-  {
-    // many small hits — Defend chips in but a full block needs a big pool
+    // late, wide barrage — Sidestep on beat 4, or soak it with Defend
     id: "cb-spray",
     name: "Ashen Spray",
-    beat: 3,
+    beat: 4,
     instances: 4,
     perHit: [{ keyword: "damage", value: 1 }],
     onHit: [],
-    telegraph: "A wide cone of embers builds across four vents.",
+    telegraph: "A wide cone of embers builds slowly, breaking on the fourth beat.",
   },
 ];
 

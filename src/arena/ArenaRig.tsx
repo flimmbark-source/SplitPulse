@@ -1,36 +1,41 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
 import { Group, Vector3 } from "three";
-import { CAMERA_LOOK_TARGET, ENEMY_ORIGIN, PATTERNS, SEGMENTS } from "./graph";
-
-// the authored approach, as an ordered run of path pieces. Dodging carries
-// you forward through it; a hit knocks you BACK along the same route
-// (never a full reset) — "maintain progress by avoiding attacks" (GDD §2.1).
-const ORDER = ["approach_a", "approach_b", "rush"] as const;
-const KNOCKBACK = 0.6; // progress units lost per hit
+import { CAMERA_LOOK_TARGET, GRID_PATTERNS, PATTERNS, SEGMENTS } from "./graph";
 import { useGame } from "../store";
 import { sfx } from "../audio";
 
-type Dir = "left" | "right" | "up" | "down";
-const DIR_KEY: Record<string, Dir> = {
-  ArrowLeft: "left",
-  ArrowRight: "right",
-  ArrowUp: "up",
-  ArrowDown: "down",
+// the authored approach, as an ordered run of path pieces. Advancing carries
+// you forward; a hit knocks you BACK along the same route (never a full reset).
+const ORDER = ["approach_a", "approach_b", "rush"] as const;
+const KNOCKBACK = 0.6;
+
+// ---- 3×3 dodge grid --------------------------------------------------------
+// The player IS a node on a 3×3 grid. Enemy attacks light up cells; the player
+// slides their node (arrow keys) to an unlit cell before the strike lands.
+const COLS = 3;
+const CELL_X = 1.45; // camera offset per column
+const CELL_Y = 1.15; // camera offset per row
+const FAR_DIST = 9; // how far ahead the lit orbs telegraph
+const FAR_SPREAD = 2.7; // orb fan-out at the telegraph plane
+const POOL = 6; // max lit cells shown at once
+
+const DIR_MOVE: Record<string, [number, number]> = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
 };
-const ARROW: Record<Dir, string> = { left: "◄", right: "►", up: "▲", down: "▼" };
-const DIRS: Dir[] = ["left", "right", "up", "down"];
 
-const POOL = 6;
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+const clampCell = (v: number) => Math.max(0, Math.min(COLS - 1, v));
 
-interface Shot {
+interface Attack {
   active: boolean;
   born: number;
   impact: number;
-  dir: Dir;
+  cells: number[];
   resolved: boolean;
-  target: Vector3; // captured camera position at spawn (+lead)
 }
 
 export default function ArenaRig({
@@ -41,56 +46,74 @@ export default function ArenaRig({
   onAvoid: () => void;
 }) {
   const camera = useThree((s) => s.camera);
-  const groups = useRef<(Group | null)[]>([]);
-  const arrows = useRef<(HTMLDivElement | null)[]>([]);
+  const orbs = useRef<(Group | null)[]>([]);
 
-  // sim state (refs — never re-render per frame)
-  const gRef = useRef(0); // global progress along ORDER, 0..ORDER.length
-  const dodge = useRef<{ dir: Dir; t: number } | null>(null);
+  // sim state
+  const gRef = useRef(0);
+  const col = useRef(1);
+  const row = useRef(1);
+  const curOx = useRef(0);
+  const curOy = useRef(0);
   const fireTimer = useRef(0);
-  const shots = useRef<Shot[]>(
-    Array.from({ length: POOL }, () => ({
-      active: false,
-      born: 0,
-      impact: 0,
-      dir: "left" as Dir,
-      resolved: true,
-      target: new Vector3(),
-    }))
-  );
+  const strikeCount = useRef(0);
+  const attack = useRef<Attack>({ active: false, born: 0, impact: 0, cells: [], resolved: true });
   const done = useRef(false);
 
-  // scratch vectors
   const scratch = useMemo(
-    () => ({ pos: new Vector3(), fwd: new Vector3(), right: new Vector3(), up: new Vector3(), tmp: new Vector3() }),
+    () => ({
+      pos: new Vector3(),
+      fwd: new Vector3(),
+      right: new Vector3(),
+      up: new Vector3(),
+      a: new Vector3(),
+      b: new Vector3(),
+    }),
     []
   );
   const worldUp = useMemo(() => new Vector3(0, 1, 0), []);
 
-  // ---- input: dodge relative to current facing ----
+  // reset the grid on entering the arena
+  useEffect(() => {
+    col.current = 1;
+    row.current = 1;
+    useGame.getState().setGrid({ col: 1, row: 1, danger: [], strike: 0 });
+  }, []);
+
+  // ---- input: slide the node across the grid ----
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
-      const d = DIR_KEY[e.key];
-      if (!d) return;
+      const mv = DIR_MOVE[e.key];
+      if (!mv) return;
       e.preventDefault();
-      dodge.current = { dir: d, t: performance.now() };
-      sfx.dodge();
+      const nc = clampCell(col.current + mv[0]);
+      const nr = clampCell(row.current + mv[1]);
+      if (nc !== col.current || nr !== row.current) {
+        col.current = nc;
+        row.current = nr;
+        useGame.getState().setGrid({ col: nc, row: nr });
+        sfx.dodge();
+      }
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
   }, []);
 
-  const spawnShot = (now: number, lead: number) => {
-    const s = shots.current.find((x) => !x.active);
-    if (!s) return;
-    s.active = true;
-    s.resolved = false;
-    s.born = now;
-    s.impact = now + lead;
-    s.dir = DIRS[(Math.random() * 4) | 0];
-    // aim at where the camera is now, nudged along its travel
-    s.target.copy(camera.position);
+  const startAttack = (now: number, lead: number) => {
+    const cells = GRID_PATTERNS[(Math.random() * GRID_PATTERNS.length) | 0].slice(0, POOL);
+    attack.current = { active: true, born: now, impact: now + lead, cells, resolved: false };
+    useGame.getState().setGrid({ danger: cells });
     sfx.enemyFire();
+  };
+
+  // world position of a grid cell, offset `spread` from the path point
+  const cellVec = (out: Vector3, cell: number, aheadDist: number, spread: number) => {
+    const c = cell % COLS;
+    const r = (cell / COLS) | 0;
+    out.copy(scratch.pos);
+    if (aheadDist) out.addScaledVector(scratch.fwd, aheadDist);
+    out.addScaledVector(scratch.right, (c - 1) * spread);
+    out.addScaledVector(scratch.up, (1 - r) * spread);
+    return out;
   };
 
   useFrame((state, dtRaw) => {
@@ -98,104 +121,81 @@ export default function ArenaRig({
     const now = state.clock.elapsedTime * 1000;
     const dt = Math.min(dtRaw, 0.05);
 
-    // ---- current path piece from global progress ----
+    // ---- traverse the route ----
     const idx = Math.min(ORDER.length - 1, Math.floor(gRef.current));
     const S = SEGMENTS[ORDER[idx]];
-
-    // ---- advance along the ordered route ----
     gRef.current += dt / S.duration;
     const reachedEnd = gRef.current >= ORDER.length;
     const localT = Math.min(1, gRef.current - idx);
-    const along = S.curve.getPoint(localT, scratch.pos);
+    S.curve.getPoint(localT, scratch.pos); // -> scratch.pos = path point
 
     // ---- camera basis (facing the enemy) ----
-    scratch.fwd.copy(CAMERA_LOOK_TARGET).sub(along).normalize();
+    scratch.fwd.copy(CAMERA_LOOK_TARGET).sub(scratch.pos).normalize();
     scratch.right.copy(scratch.fwd).cross(worldUp).normalize();
     scratch.up.copy(scratch.right).cross(scratch.fwd).normalize();
 
-    // ---- dodge offset (relative to facing) ----
-    let ox = 0;
-    let oy = 0;
-    if (dodge.current) {
-      const p = (now - dodge.current.t) / 300;
-      if (p >= 1) dodge.current = null;
-      else {
-        const amp = Math.sin(Math.min(1, p) * Math.PI) * 1.15;
-        if (dodge.current.dir === "left") ox = -amp;
-        if (dodge.current.dir === "right") ox = amp;
-        if (dodge.current.dir === "up") oy = amp;
-        if (dodge.current.dir === "down") oy = -amp * 0.7;
-      }
-    }
-    const dodgeActive = !!dodge.current && now - dodge.current.t < 260;
-
+    // ---- smooth the camera toward the player's grid cell ----
+    const tox = (col.current - 1) * CELL_X;
+    const toy = (1 - row.current) * CELL_Y;
+    const k = Math.min(1, dt * 12);
+    curOx.current += (tox - curOx.current) * k;
+    curOy.current += (toy - curOy.current) * k;
     camera.position
-      .copy(along)
-      .addScaledVector(scratch.right, ox)
-      .addScaledVector(scratch.up, oy);
+      .copy(scratch.pos)
+      .addScaledVector(scratch.right, curOx.current)
+      .addScaledVector(scratch.up, curOy.current);
     camera.lookAt(CAMERA_LOOK_TARGET);
 
-    // ---- enemy fire ----
-    if (S.pattern) {
-      const pat = PATTERNS[S.pattern];
+    // ---- schedule attacks ----
+    if (S.pattern && !attack.current.active) {
       fireTimer.current += dt;
-      if (fireTimer.current >= pat.interval) {
+      if (fireTimer.current >= PATTERNS[S.pattern].interval) {
         fireTimer.current = 0;
-        spawnShot(now, pat.lead * 1000);
+        startAttack(now, PATTERNS[S.pattern].lead * 1000);
       }
     }
 
-    // ---- update shots ----
+    // ---- drive the lit orbs + resolve the strike ----
+    const at = attack.current;
     let hitThisFrame = false;
-    shots.current.forEach((s, i) => {
-      const g = groups.current[i];
-      const arrow = arrows.current[i];
-      if (!g) return;
-      if (!s.active) {
-        g.visible = false;
-        if (arrow) arrow.style.opacity = "0";
-        return;
-      }
-      g.visible = true;
-      const p = Math.min(1, (now - s.born) / (s.impact - s.born));
-      // TRACK then COMMIT: home hard onto the player for most of the flight,
-      // then lock the aim just before impact so a dodge visibly slips it.
-      const COMMIT = 0.82;
-      if (p < COMMIT) {
-        // ease the homing strength up so it noticeably curves toward you
-        const homing = 0.12 + p * 0.5;
-        s.target.lerp(camera.position, homing);
-      }
-      // accelerating approach (ease-in) reads as a real projectile
-      const travel = p * p;
-      g.position.copy(ENEMY_ORIGIN).lerp(s.target, travel);
-      // point the shot along its own velocity, and swell as it nears
-      g.lookAt(s.target);
-      g.scale.setScalar(0.28 + travel * 0.5);
+    const p = at.active ? clamp01((now - at.born) / (at.impact - at.born)) : 0;
+    const rush = p < 0.62 ? 0 : (p - 0.62) / 0.38;
 
-      // telegraph arrow
-      if (arrow) {
-        if (!s.resolved && p > 0.08 && p < 0.82) {
-          arrow.style.opacity = "1";
-          arrow.textContent = ARROW[s.dir];
-        } else arrow.style.opacity = "0";
+    for (let i = 0; i < POOL; i++) {
+      const orb = orbs.current[i];
+      if (!orb) continue;
+      if (at.active && i < at.cells.length) {
+        const cell = at.cells[i];
+        const far = cellVec(scratch.a, cell, FAR_DIST, FAR_SPREAD);
+        // near anchor: where a player standing in this cell would be
+        const c = cell % COLS;
+        const r = (cell / COLS) | 0;
+        const near = scratch.b
+          .copy(scratch.pos)
+          .addScaledVector(scratch.right, (c - 1) * CELL_X)
+          .addScaledVector(scratch.up, (1 - r) * CELL_Y);
+        orb.position.copy(far).lerp(near, rush * rush);
+        orb.visible = true;
+        const s = 0.5 + rush * 0.9 + Math.sin(now * 0.02) * 0.05;
+        orb.scale.setScalar(s);
+      } else {
+        orb.visible = false;
       }
+    }
 
-      // resolve at impact
-      if (!s.resolved && p >= 1) {
-        s.resolved = true;
-        const avoided = dodgeActive && dodge.current!.dir === s.dir;
-        if (avoided) {
-          onAvoid();
-          sfx.dodge();
-          s.active = false;
-        } else {
-          hitThisFrame = true;
-          s.active = false;
-        }
+    if (at.active && !at.resolved && p >= 1) {
+      at.resolved = true;
+      at.active = false;
+      const playerCell = row.current * COLS + col.current;
+      const struck = at.cells.includes(playerCell);
+      strikeCount.current += 1;
+      useGame.getState().setGrid({ danger: [], strike: strikeCount.current });
+      if (struck) {
+        hitThisFrame = true;
+      } else {
+        onAvoid();
       }
-      if (s.resolved && p > 1.25) s.active = false;
-    });
+    }
 
     if (hitThisFrame) {
       onHit();
@@ -204,29 +204,21 @@ export default function ArenaRig({
       if (useGame.getState().playerHp <= 0) {
         done.current = true;
       } else {
-        // knocked back along the route (never a full reset)
         gRef.current = Math.max(0, gRef.current - KNOCKBACK);
         fireTimer.current = 0;
-        shots.current.forEach((s) => (s.active = false));
       }
     }
 
     // ---- progress meter ----
     useGame.setState({ distance: Math.min(100, (gRef.current / ORDER.length) * 100) });
 
-    // ---- dev telemetry: the direction currently telegraphed (for tests) ----
+    // ---- dev telemetry: current danger cells + player cell (for tests) ----
     if (import.meta.env.DEV) {
-      let dir: Dir | null = null;
-      let soonest = Infinity;
-      for (const s of shots.current) {
-        if (!s.active || s.resolved) continue;
-        const eta = s.impact - now;
-        if (eta > 0 && eta < soonest) {
-          soonest = eta;
-          dir = s.dir;
-        }
-      }
-      (window as unknown as { __arena: { dir: Dir | null } }).__arena = { dir };
+      (window as unknown as { __arena: { danger: number[]; col: number; row: number } }).__arena = {
+        danger: at.active && !at.resolved ? at.cells : [],
+        col: col.current,
+        row: row.current,
+      };
     }
 
     // ---- arrival opens the attack window ----
@@ -239,31 +231,16 @@ export default function ArenaRig({
 
   return (
     <>
-      {shots.current.map((_, i) => (
-        <group key={i} ref={(el) => (groups.current[i] = el)} visible={false}>
+      {Array.from({ length: POOL }).map((_, i) => (
+        <group key={i} ref={(el) => (orbs.current[i] = el)} visible={false}>
           <mesh>
-            <sphereGeometry args={[0.6, 8, 6]} />
-            <meshStandardMaterial color="#ffd27a" emissive="#ff9a4d" emissiveIntensity={2.4} toneMapped={false} flatShading />
+            <sphereGeometry args={[0.55, 8, 6]} />
+            <meshStandardMaterial color="#ff6a4d" emissive="#ff3a2a" emissiveIntensity={2.4} toneMapped={false} flatShading />
           </mesh>
-          <mesh scale={1.7}>
-            <sphereGeometry args={[0.6, 8, 6]} />
-            <meshBasicMaterial color="#ff9a4d" transparent opacity={0.18} />
+          <mesh scale={1.8}>
+            <sphereGeometry args={[0.55, 8, 6]} />
+            <meshBasicMaterial color="#ff5566" transparent opacity={0.16} />
           </mesh>
-          <Html center distanceFactor={10} zIndexRange={[10, 0]} style={{ pointerEvents: "none" }}>
-            <div
-              ref={(el) => (arrows.current[i] = el)}
-              style={{
-                fontFamily: "var(--mono)",
-                fontWeight: 700,
-                fontSize: 26,
-                color: "var(--pulse)",
-                textShadow: "0 0 10px var(--pulse)",
-                opacity: 0,
-                transition: "opacity 0.08s linear",
-                transform: "translateY(-34px)",
-              }}
-            />
-          </Html>
         </group>
       ))}
     </>

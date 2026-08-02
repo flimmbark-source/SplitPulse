@@ -29,13 +29,24 @@ const v = (x: number, z: number, y = EYE) => new Vector3(x, y, z);
 
 // ---- attack patterns (enemy fire during a segment) -----------------
 export interface Pattern {
-  interval: number; // seconds between shots
-  lead: number; // telegraph → impact time
+  interval: number; // seconds between attacks
+  lead: number; // telegraph → strike time
 }
 export const PATTERNS: Record<string, Pattern> = {
-  volley: { interval: 1.6, lead: 1.4 },
-  volley_fast: { interval: 1.25, lead: 1.2 },
+  volley: { interval: 2.1, lead: 1.5 },
+  volley_fast: { interval: 1.6, lead: 1.25 },
 };
+
+// 3×3 dodge grid — cells indexed 0..8 (row-major, 0 = top-left).
+// Each attack lights a set of cells; the player must have moved their node
+// to an unlit cell by the strike. Every pattern leaves reachable safe cells.
+export const GRID_PATTERNS: number[][] = [
+  [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
+  [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
+  [0, 4, 8], [2, 4, 6],           // diagonals
+  [0, 1, 3, 4], [1, 2, 4, 5], [3, 4, 6, 7], [4, 5, 7, 8], // quadrants
+  [1, 3, 5, 7],                   // plus edges (corners safe)
+];
 
 // ---- segment graph -------------------------------------------------
 export interface Segment {

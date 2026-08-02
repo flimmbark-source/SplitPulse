@@ -66,15 +66,21 @@ export interface Ability {
 }
 
 // ---- Enemy -----------------------------------------------------
+/** one timed sub-action of a named move, resolving on a single beat */
+export interface EnemyEvent {
+  beat: number;
+  instances: number; // hit instances generated on this beat
+  /** effects each instance carries — damage is mitigated by Defend, while
+   *  move/status payloads are NOT (only a Sidestep on this beat avoids them). */
+  perHit: Effect[];
+  onHit: Effect[]; // triggered when a damaging hit lands (e.g. move -1)
+}
+
 export interface EnemyAction {
   id: string;
   name: string;
-  beat: number; // single resolution beat
-  instances: number; // number of hit instances generated on that beat
-  /** effects each instance carries — damage is mitigated by Defend, while
-   *  move/status payloads are NOT (only a Sidestep avoids them). */
-  perHit: Effect[];
-  onHit: Effect[]; // triggered when a damaging hit lands (e.g. move -1)
+  /** a named move may fire several events across different beats */
+  events: EnemyEvent[];
   /** partial info shown before the move is learned */
   telegraph: string;
 }

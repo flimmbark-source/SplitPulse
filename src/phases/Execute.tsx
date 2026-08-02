@@ -3,7 +3,7 @@ import { useGame } from "../store";
 import Diagram, { type ExecState } from "../components/Diagram";
 import { nodeEffect } from "../game/nodes";
 import { resolveExchange } from "../game/resolve";
-import { actionToDiagram, describeAction } from "../data/content";
+import { actionBeats, actionToDiagram, describeAction } from "../data/content";
 import { sfx } from "../audio";
 import type { ResolvedNode } from "../types";
 
@@ -26,7 +26,10 @@ export default function Execute() {
     [ability]
   );
   const targetOf = (beat: number) => LEAD_IN + (beat - 1) * BEAT_MS;
-  const enemyResolve = targetOf(action.beat);
+  const eventBeats = useMemo(() => actionBeats(action), [action]);
+  const lastEnemyBeat = Math.max(...eventBeats);
+  const enemyResolve = targetOf(lastEnemyBeat); // when the whole action is settled
+  const totalInstances = action.events.reduce((s, e) => s + e.instances, 0);
   const lastTarget = Math.max(...nodes.map((n) => targetOf(n.beat)), enemyResolve);
 
   const statusRef = useRef<Record<string, Status>>(
@@ -34,7 +37,7 @@ export default function Execute() {
   );
   const startRef = useRef(0);
   const finishedRef = useRef(false);
-  const firedRef = useRef(false);
+  const firedBeatsRef = useRef<Set<number>>(new Set());
   const outcomeRef = useRef(false);
   const lastBeatTickRef = useRef(0);
 
@@ -122,17 +125,18 @@ export default function Execute() {
         }
       }
 
-      // enemy fires on its beat — this is the visual only
-      if (!firedRef.current && t >= enemyResolve) {
-        firedRef.current = true;
-        sfx.enemyFire();
+      // enemy fires on EACH of its event beats (visual + sound)
+      for (const eb of eventBeats) {
+        if (!firedBeatsRef.current.has(eb) && t >= targetOf(eb)) {
+          firedBeatsRef.current.add(eb);
+          sfx.enemyFire();
+        }
       }
 
-      // the OUTCOME is only decided once the defensive window has closed
-      // (the Sidestep can still land up to WINDOW ms after the beat). Only
-      // then do we compute and show the real numbers — so the popup can never
-      // contradict the chain result.
-      if (firedRef.current && !outcomeRef.current && t >= enemyResolve + WINDOW + 60) {
+      // the OUTCOME is only decided once the LAST event's window has closed
+      // (a Sidestep can land up to WINDOW ms after its beat). Only then do we
+      // show the real numbers — so the popup can never contradict the chain.
+      if (!outcomeRef.current && t >= enemyResolve + WINDOW + 60) {
         outcomeRef.current = true;
         const snapshot: ResolvedNode[] = ability.nodes.map((n) => {
           const { effect, materialKey } = nodeEffect(n, assignments, belt);
@@ -310,7 +314,7 @@ export default function Execute() {
       {/* §9.4 collision — the shots cross the seam once the outcome resolves,
           veering off if you slipped the action */}
       {enemyFx &&
-        Array.from({ length: action.instances }).map((_, i) => (
+        Array.from({ length: totalInstances }).map((_, i) => (
           <div
             key={i}
             className="missile-streak"
@@ -372,13 +376,19 @@ export default function Execute() {
             fontFamily: "var(--display)",
           }}
         >
-          {enemyFx.sidestep ? (
-            <div style={{ fontSize: 46, color: "var(--sidestep)", textShadow: "0 0 20px rgba(255,206,74,0.7)" }}>
-              SIDESTEP!
-            </div>
-          ) : enemyFx.neutral ? (
-            <div style={{ fontSize: 40, color: "var(--defend)", textShadow: "0 0 20px rgba(79,157,255,0.7)" }}>
-              BLOCKED!
+          {/* only celebrate on a FULL neutralise; otherwise show what actually
+              got through, even if you slipped one of several beats */}
+          {enemyFx.neutral ? (
+            <div
+              style={{
+                fontSize: 46,
+                color: enemyFx.sidestep ? "var(--sidestep)" : "var(--defend)",
+                textShadow: enemyFx.sidestep
+                  ? "0 0 20px rgba(255,206,74,0.7)"
+                  : "0 0 20px rgba(79,157,255,0.7)",
+              }}
+            >
+              {enemyFx.sidestep ? "SIDESTEP!" : "BLOCKED!"}
             </div>
           ) : (
             <>

@@ -4,6 +4,7 @@ import type {
   Effect,
   EnemyAction,
   EnemyDef,
+  EnemyEvent,
   MaterialDef,
   NodeKind,
 } from "../types";
@@ -167,38 +168,47 @@ export const ABILITIES: Ability[] = [
 
 // ---- Enemy -----------------------------------------------------
 
-// Each action differs in BOTH effect AND timing (resolution beat). You read
-// the announced beat and pick the ability whose Sidestep lands on it — or, for
-// a damage action, block it with Defend on any beat.
+// Actions differ in effect AND timing, and a named move may fire on SEVERAL
+// beats. You read each beat and answer it — Sidestep on that beat, or Defend a
+// damage beat.
 export const CINDER_ACTIONS: EnemyAction[] = [
   {
-    // early, unblockable slam — only a beat-1 Sidestep avoids it
+    // early, unblockable slam on beat 1
     id: "cb-shove",
     name: "Iron Shove",
-    beat: 1,
-    instances: 1,
-    perHit: [{ keyword: "move", value: -3 }],
-    onHit: [],
     telegraph: "The battery lurches — a heavy slam lands on the very first beat.",
+    events: [{ beat: 1, instances: 1, perHit: [{ keyword: "move", value: -3 }], onHit: [] }],
   },
   {
     id: "cb-volley",
     name: "Cinder Volley",
-    beat: 3,
-    instances: 3,
-    perHit: [{ keyword: "damage", value: 2 }],
-    onHit: [{ keyword: "move", value: -1, trigger: "onHit" }],
     telegraph: "Three vents flare. Something fires on the third beat.",
+    events: [
+      {
+        beat: 3,
+        instances: 3,
+        perHit: [{ keyword: "damage", value: 2 }],
+        onHit: [{ keyword: "move", value: -1, trigger: "onHit" }],
+      },
+    ],
   },
   {
-    // late, wide barrage — Sidestep on beat 4, or soak it with Defend
+    // late, wide barrage on beat 4
     id: "cb-spray",
     name: "Ashen Spray",
-    beat: 4,
-    instances: 4,
-    perHit: [{ keyword: "damage", value: 1 }],
-    onHit: [],
     telegraph: "A wide cone of embers builds slowly, breaking on the fourth beat.",
+    events: [{ beat: 4, instances: 4, perHit: [{ keyword: "damage", value: 1 }], onHit: [] }],
+  },
+  {
+    // TWO timed sub-actions: a volley on beat 2, then a shove on beat 4.
+    // Answer both — Defend the beat-2 damage, Sidestep the beat-4 shove.
+    id: "cb-twin",
+    name: "Twin Salvo",
+    telegraph: "Two banks wind up out of sync — something on the second beat, then the fourth.",
+    events: [
+      { beat: 2, instances: 2, perHit: [{ keyword: "damage", value: 2 }], onHit: [] },
+      { beat: 4, instances: 1, perHit: [{ keyword: "move", value: -3 }], onHit: [] },
+    ],
   },
 ];
 
@@ -209,50 +219,56 @@ export const CINDER_BATTERY: EnemyDef = {
   actions: CINDER_ACTIONS,
 };
 
-// a concise, keyword-clear one-line summary of what an action does
+// describe one event's payload
+function describeEvent(e: EnemyEvent): string {
+  const dmg = e.perHit.find((x) => x.keyword === "damage")?.value;
+  const mv = e.perHit.find((x) => x.keyword === "move")?.value;
+  const onMv = e.onHit.find((x) => x.keyword === "move")?.value;
+  const bits: string[] = [];
+  if (dmg) bits.push(`${e.instances}× Damage ${dmg}`);
+  if (mv) bits.push(`Move −${Math.abs(mv)} (unblockable)`);
+  if (onMv) bits.push(`on hit Move −${Math.abs(onMv)}`);
+  return bits.join(", ");
+}
+
+// a concise, keyword-clear one-line summary of an action across its beats
 export function describeAction(a: EnemyAction): string {
-  const parts: string[] = [];
-  const dmg = a.perHit.find((e) => e.keyword === "damage")?.value;
-  const mv = a.perHit.find((e) => e.keyword === "move")?.value;
-  const onMv = a.onHit.find((e) => e.keyword === "move")?.value;
-  if (dmg) parts.push(`${a.instances}× Damage ${dmg}`);
-  if (mv) parts.push(`Move −${Math.abs(mv)} (unblockable)`);
-  if (onMv) parts.push(`on hit: Move −${Math.abs(onMv)}`);
-  return parts.join(" · ");
+  return a.events.map((e) => `b${e.beat}: ${describeEvent(e)}`).join("  ·  ");
+}
+
+/** every beat on which this action does something */
+export function actionBeats(a: EnemyAction): number[] {
+  return [...new Set(a.events.map((e) => e.beat))].sort((x, y) => x - y);
+}
+
+export function eventGlyphKeyword(e: EnemyEvent): "damage" | "move" {
+  return e.perHit.some((x) => x.keyword === "damage") ? "damage" : "move";
 }
 
 // ---- The enemy action, expressed in the SAME diagram grammar -----
 // A fixed, authored phrase the player reads but does not play (GDD §9.3):
-// charge nodes on the lead-up beats resolving into one FIRE node.
+// charge nodes on lead-up beats, a FIRE node on every beat that has an event.
 export function actionToDiagram(action: EnemyAction): Ability {
+  const maxBeat = Math.max(...action.events.map((e) => e.beat));
   const nodes: Ability["nodes"] = [];
   const edges: [string, string][] = [];
-  // charge nodes on every beat before the resolution beat
-  for (let b = 1; b < action.beat; b++) {
-    const id = `enemy-charge-${b}`;
-    // mirror the player's zig-zag spacing so the two sides read as siblings
-    const x = 16 + ((b - 1) / Math.max(1, action.beat - 1)) * 68;
+  for (let b = 1; b <= maxBeat; b++) {
+    const id = `enemy-b${b}`;
+    const x = maxBeat > 1 ? 14 + ((b - 1) / (maxBeat - 1)) * 72 : 50;
     const y = b % 2 === 0 ? 60 : 36;
-    nodes.push({ id, beat: b, x, y, execKey: "", kind: "fixed" });
-    if (b > 1) edges.push([`enemy-charge-${b - 1}`, id]);
+    const ev = action.events.find((e) => e.beat === b);
+    nodes.push({
+      id,
+      beat: b,
+      x,
+      y,
+      execKey: "",
+      kind: "fixed",
+      fixedEffect: ev
+        ? { keyword: eventGlyphKeyword(ev), value: ev.perHit[0]?.value ?? 0 }
+        : undefined,
+    });
+    if (b > 1) edges.push([`enemy-b${b - 1}`, id]);
   }
-  const fireId = "enemy-fire";
-  nodes.push({
-    id: fireId,
-    beat: action.beat,
-    x: 86,
-    y: action.beat % 2 === 0 ? 60 : 36,
-    execKey: "",
-    kind: "fixed",
-    fixedEffect: { keyword: "damage", value: action.perHit[0]?.value ?? 0 },
-  });
-  if (action.beat > 1) edges.push([`enemy-charge-${action.beat - 1}`, fireId]);
-  return {
-    id: `${action.id}-diagram`,
-    name: action.name,
-    blurb: "",
-    beats: action.beat,
-    nodes,
-    edges,
-  };
+  return { id: `${action.id}-diagram`, name: action.name, blurb: "", beats: maxBeat, nodes, edges };
 }

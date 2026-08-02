@@ -37,58 +37,46 @@ export function resolveExchange(
 
   const attack = acc.attack;
   const poison = acc.poison;
-  const defendPool = acc.defend;
-  const sidestepAtActionBeat = acc.sidestepBeats.has(action.beat);
 
   if (attack > 0) good(`Attack ${attack} — strike lands on the Battery.`);
   if (poison > 0) good(`Poison ${poison} — rot takes hold.`);
 
-  // --- enemy resolution ---
-  const hitDamage = action.perHit.find((e) => e.keyword === "damage")?.value ?? 0;
-  const perHitMove = action.perHit.find((e) => e.keyword === "move")?.value ?? 0; // unblockable
-  const onHitMove = action.onHit.find((e) => e.keyword === "move")?.value ?? 0;
-
+  // --- enemy resolution, event by event across the beats ---
+  // A Sidestep landed on a beat avoids every event on that beat; Defend is a
+  // shared pool drawn down across the damaging events in beat order.
   let damageTaken = 0;
   let pushedBack = 0;
-  let neutralized = false;
-  let sidestepped = false;
+  let pool = acc.defend;
+  let sidestepped = false; // did any event get sidestepped
 
-  if (sidestepAtActionBeat) {
-    sidestepped = true;
-    neutralized = true;
-    good(`Sidestep on beat ${action.beat} — ${action.name} passes through empty air.`);
-  } else {
-    let pool = defendPool;
-    let hitsThatLanded = 0;
-    let fullyBlocked = 0;
-
-    for (let i = 0; i < action.instances; i++) {
-      // Defend mitigates damage; Move payloads are unblockable
+  for (const ev of [...action.events].sort((a, b) => a.beat - b.beat)) {
+    if (acc.sidestepBeats.has(ev.beat)) {
+      sidestepped = true;
+      good(`Sidestep on beat ${ev.beat} — that volley passes through empty air.`);
+      continue;
+    }
+    const hitDamage = ev.perHit.find((e) => e.keyword === "damage")?.value ?? 0;
+    const perHitMove = ev.perHit.find((e) => e.keyword === "move")?.value ?? 0;
+    const onHitMove = ev.onHit.find((e) => e.keyword === "move")?.value ?? 0;
+    for (let i = 0; i < ev.instances; i++) {
       if (hitDamage > 0) {
         const block = Math.min(pool, hitDamage);
         pool -= block;
         const remaining = hitDamage - block;
         if (remaining > 0) {
           damageTaken += remaining;
-          hitsThatLanded++;
           pushedBack += Math.abs(onHitMove);
-        } else {
-          fullyBlocked++;
         }
       }
-      // an unblockable Move payload always lands (only Sidestep avoids it)
-      pushedBack += Math.abs(perHitMove);
+      pushedBack += Math.abs(perHitMove); // unblockable
     }
-
-    if (defendPool > 0 && hitDamage > 0) {
-      neutral(`Defend ${defendPool} — ${fullyBlocked} of ${action.instances} absorbed.`);
-    }
-    if (damageTaken > 0) bad(`${damageTaken} damage taken.`);
-    if (pushedBack > 0) bad(`Knockback — driven back ${pushedBack}.`);
-    // fully neutralised only if nothing at all got through
-    neutralized = damageTaken === 0 && pushedBack === 0;
-    if (neutralized) good("Nothing gets through — the action is fully neutralised.");
   }
+
+  if (damageTaken > 0) bad(`${damageTaken} damage taken.`);
+  if (pushedBack > 0) bad(`Knockback — driven back ${pushedBack}.`);
+  // fully neutralised only if nothing at all got through, on any beat
+  const neutralized = damageTaken === 0 && pushedBack === 0;
+  if (neutralized) good(`Nothing gets through — ${action.name} is fully neutralised.`);
 
   // a player-side Move keyword resists forced movement (dormant until a
   // material provides it, but wired through the registry accumulator)

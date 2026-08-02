@@ -1,4 +1,12 @@
-import type { Ability, EnemyAction, EnemyDef, MaterialDef } from "../types";
+import type {
+  Ability,
+  AbilityNode,
+  Effect,
+  EnemyAction,
+  EnemyDef,
+  MaterialDef,
+  NodeKind,
+} from "../types";
 
 // ============================================================
 // PROTOTYPE CONTENT
@@ -39,61 +47,99 @@ export const MATERIALS: Record<string, MaterialDef> = {
 
 export const ALL_MATERIALS = Object.values(MATERIALS);
 
-// ---- Abilities -------------------------------------------------
+// ---- Abilities as directional gestures -------------------------
+// An ability is authored as a START node plus a run of steps, each
+// carrying a WASD direction. Every node after the first is placed by
+// STEPPING in its key's direction from the previous node, so the edge
+// into it always arrives ALONG that key's axis — the diagram literally
+// draws the input sequence, and the shape is the ability's theme.
+
+type Cardinal = "W" | "A" | "S" | "D";
+// SVG space: y grows downward, so W (up) is -y.
+const DIRV: Record<Cardinal, [number, number]> = {
+  W: [0, -1],
+  A: [-1, 0],
+  S: [0, 1],
+  D: [1, 0],
+};
+
+interface Step {
+  id: string;
+  beat: number;
+  key: Cardinal;
+  kind: NodeKind;
+  fixedEffect?: Effect;
+  slot?: number;
+}
+
+function gesture(
+  id: string,
+  name: string,
+  blurb: string,
+  beats: number,
+  steps: Step[]
+): Ability {
+  // walk the directions to lay out points on a unit grid
+  const pts: [number, number][] = [[0, 0]];
+  for (let i = 1; i < steps.length; i++) {
+    const [dx, dy] = DIRV[steps[i].key];
+    pts.push([pts[i - 1][0] + dx, pts[i - 1][1] + dy]);
+  }
+  // normalise into a target box within the 100×90 viewBox
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const w = maxX - minX;
+  const h = maxY - minY;
+  const TX = 18;
+  const TW = 64;
+  const TY = 22;
+  const TH = 46;
+  const scale = Math.min(w ? TW / w : Infinity, h ? TH / h : Infinity, 26);
+  const offX = TX + (TW - w * scale) / 2 - minX * scale;
+  const offY = TY + (TH - h * scale) / 2 - minY * scale;
+
+  const nodes: AbilityNode[] = steps.map((s, i) => ({
+    id: s.id,
+    beat: s.beat,
+    x: pts[i][0] * scale + offX,
+    y: pts[i][1] * scale + offY,
+    execKey: s.key,
+    kind: s.kind,
+    fixedEffect: s.fixedEffect,
+    slot: s.slot,
+  }));
+  const edges: [string, string][] = [];
+  for (let i = 1; i < steps.length; i++) edges.push([steps[i - 1].id, steps[i].id]);
+  return { id, name, blurb, beats, nodes, edges };
+}
 
 export const ABILITIES: Ability[] = [
-  {
-    id: "basic-strike",
-    name: "Basic Strike",
-    blurb: "One committed blow. A fixed strike, one open slot.",
-    beats: 3,
-    nodes: [
-      {
-        id: "bs-fixed",
-        beat: 1,
-        x: 26,
-        y: 50,
-        execKey: "W",
-        kind: "fixed",
-        fixedEffect: { keyword: "attack", value: 2 },
-      },
-      { id: "bs-c1", beat: 3, x: 74, y: 50, execKey: "S", kind: "config", slot: 1 },
-    ],
-    edges: [["bs-fixed", "bs-c1"]],
-  },
-  {
-    id: "prism-step",
-    name: "Prism Step",
-    blurb: "A dodging phrase. Sidestep on beat 3 answers ranged fire, and two open slots colour the strike.",
-    beats: 4,
-    nodes: [
-      {
-        id: "ps-atk",
-        beat: 1,
-        x: 20,
-        y: 34,
-        execKey: "W",
-        kind: "fixed",
-        fixedEffect: { keyword: "attack", value: 2 },
-      },
-      { id: "ps-c1", beat: 2, x: 44, y: 62, execKey: "A", kind: "config", slot: 1 },
-      {
-        id: "ps-side",
-        beat: 3,
-        x: 68, // resolution beat 3 — matches Cinder Battery
-        y: 34,
-        execKey: "S",
-        kind: "fixed",
-        fixedEffect: { keyword: "sidestep" },
-      },
-      { id: "ps-c2", beat: 4, x: 88, y: 62, execKey: "D", kind: "config", slot: 2 },
-    ],
-    edges: [
-      ["ps-atk", "ps-c1"],
-      ["ps-c1", "ps-side"],
-      ["ps-side", "ps-c2"],
-    ],
-  },
+  gesture(
+    "basic-strike",
+    "Basic Strike",
+    "One committed thrust — a fixed strike driven straight into an open slot.",
+    3,
+    [
+      { id: "bs-fixed", beat: 1, key: "W", kind: "fixed", fixedEffect: { keyword: "attack", value: 2 } },
+      { id: "bs-c1", beat: 3, key: "D", kind: "config", slot: 1 },
+    ]
+  ),
+  gesture(
+    "prism-step",
+    "Prism Step",
+    "A stepping phrase: drive right, duck down into the Sidestep on beat 3, then step out again. Two open slots colour the strike.",
+    4,
+    [
+      { id: "ps-atk", beat: 1, key: "W", kind: "fixed", fixedEffect: { keyword: "attack", value: 2 } },
+      { id: "ps-c1", beat: 2, key: "D", kind: "config", slot: 1 },
+      { id: "ps-side", beat: 3, key: "S", kind: "fixed", fixedEffect: { keyword: "sidestep" } },
+      { id: "ps-c2", beat: 4, key: "D", kind: "config", slot: 2 },
+    ]
+  ),
 ];
 
 // ---- Enemy -----------------------------------------------------

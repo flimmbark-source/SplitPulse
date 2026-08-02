@@ -70,6 +70,35 @@ export default function Diagram({
               strokeDasharray="1 3"
               opacity={lit ? 0.9 : 0.12}
             />
+            {/* directional chevron — the edge is "led into" nb along its key
+                axis, so point an arrow into nb in that key's colour */}
+            {(() => {
+              const dx = nb.x - na.x;
+              const dy = nb.y - na.y;
+              const len = Math.hypot(dx, dy) || 1;
+              const ux = dx / len;
+              const uy = dy / len;
+              const px = -uy;
+              const py = ux;
+              const tipX = nb.x - ux * (R + 1.5);
+              const tipY = nb.y - uy * (R + 1.5);
+              const bx = tipX - ux * 3.2;
+              const by = tipY - uy * 3.2;
+              const wingW = 2.4;
+              const col = keyColor(nb.execKey, "var(--ink-dim)");
+              return (
+                <polyline
+                  points={`${bx + px * wingW},${by + py * wingW} ${tipX},${tipY} ${bx - px * wingW},${by - py * wingW}`}
+                  fill="none"
+                  stroke={col}
+                  strokeWidth={1.1}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={lit ? 1 : 0.55}
+                />
+              );
+            })()}
+
             {/* travelling pulse spark */}
             {lit && (
               <circle

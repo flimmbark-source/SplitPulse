@@ -1,7 +1,17 @@
-import { CINDER_BATTERY } from "../data/content";
+import type { EnemyAction } from "../types";
 
-export default function EnemyPreview({ learned }: { learned: boolean }) {
-  const a = CINDER_BATTERY.action;
+export default function EnemyPreview({
+  action,
+  learned,
+}: {
+  action: EnemyAction;
+  learned: boolean;
+}) {
+  const a = action;
+  const dmg = a.perHit.find((e) => e.keyword === "damage")?.value;
+  const mv = a.perHit.find((e) => e.keyword === "move")?.value;
+  const onMv = a.onHit.find((e) => e.keyword === "move")?.value;
+
   return (
     <div className="arcane-panel" style={{ padding: "14px 16px", minWidth: 230 }}>
       <div className="tag" style={{ color: "var(--attack)" }}>
@@ -34,7 +44,7 @@ export default function EnemyPreview({ learned }: { learned: boolean }) {
             }}
           >
             <div style={{ fontWeight: 700 }}>{b}</div>
-            {b === a.beat && <div style={{ fontSize: 9 }}>FIRE</div>}
+            {b === a.beat && <div style={{ fontSize: 9 }}>HIT</div>}
           </div>
         ))}
       </div>
@@ -42,25 +52,34 @@ export default function EnemyPreview({ learned }: { learned: boolean }) {
       {learned ? (
         <ul style={{ listStyle: "none", fontSize: 12, lineHeight: 1.7 }}>
           <li>
-            <span style={{ color: "var(--move)" }}>▣</span> Fire {a.instances} missiles on
-            beat {a.beat}
+            <span style={{ color: "var(--move)" }}>▣</span> {a.instances} instance
+            {a.instances === 1 ? "" : "s"} on beat {a.beat}
           </li>
-          <li>
-            <span style={{ color: "var(--attack)" }}>✕</span> Each missile: Damage{" "}
-            {a.perHit[0].value}
-          </li>
-          <li>
-            <span style={{ color: "var(--move)" }}>»</span> On hit: Move back{" "}
-            {Math.abs(a.onHit[0].value ?? 0)}
-          </li>
+          {dmg !== undefined && (
+            <li>
+              <span style={{ color: "var(--attack)" }}>✕</span> Each: Damage {dmg}
+            </li>
+          )}
+          {mv !== undefined && (
+            <li>
+              <span style={{ color: "var(--move)" }}>»</span> Move −{Math.abs(mv)}{" "}
+              <span style={{ color: "var(--ink-dim)" }}>(unblockable — Defend won't help)</span>
+            </li>
+          )}
+          {onMv !== undefined && (
+            <li>
+              <span style={{ color: "var(--move)" }}>»</span> On hit: Move −{Math.abs(onMv)}
+            </li>
+          )}
           <li style={{ marginTop: 6, color: "var(--sidestep)" }}>
             ⟳ Counter: Sidestep on beat {a.beat}
+            {dmg !== undefined && ", or Defend it"}
           </li>
         </ul>
       ) : (
         <div style={{ fontSize: 12, lineHeight: 1.6, color: "var(--ink-dim)" }}>
           <div>Resolves on beat {a.beat}.</div>
-          <div>{a.instances} projectiles seen.</div>
+          <div>{a.instances} telegraphed.</div>
           <div style={{ marginTop: 6, fontStyle: "italic" }}>“{a.telegraph}”</div>
           <div style={{ marginTop: 6, color: "var(--miss)" }}>Effects: unknown</div>
         </div>

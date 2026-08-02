@@ -1,6 +1,6 @@
 import type { Ability, BeltMaterial } from "../types";
 import type { NodeAssignments } from "../store";
-import { keyColor, nodeEffect } from "../game/nodes";
+import { effectLabel, keyColor, nodeEffect } from "../game/nodes";
 import { KEYWORDS } from "../game/keywords";
 
 export interface ExecState {
@@ -216,6 +216,23 @@ export default function Diagram({
                 style={{ fontFamily: "var(--mono)" }}
               >
                 slot {n.slot}
+              </text>
+            )}
+
+            {/* the effect ACTIVATES here: a rising, fading label the moment the
+                node lands (colour = keyword) — live feedback, not an after-report */}
+            {showKeys && st === "hit" && effect && (
+              <text
+                x={n.x}
+                y={n.y - R - 9}
+                textAnchor="middle"
+                fontSize={5.5}
+                fill={iconColor}
+                style={{ fontFamily: "var(--mono)", fontWeight: 700 }}
+              >
+                {effectLabel(effect)}
+                <animate attributeName="opacity" from="1" to="0" dur="0.85s" fill="freeze" />
+                <animate attributeName="y" from={n.y - R - 9} to={n.y - R - 20} dur="0.85s" fill="freeze" />
               </text>
             )}
           </g>

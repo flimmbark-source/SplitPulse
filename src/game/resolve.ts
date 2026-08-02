@@ -45,6 +45,7 @@ export function resolveExchange(
 
   // --- enemy resolution ---
   const hitDamage = action.perHit.find((e) => e.keyword === "damage")?.value ?? 0;
+  const perHitMove = action.perHit.find((e) => e.keyword === "move")?.value ?? 0; // unblockable
   const onHitMove = action.onHit.find((e) => e.keyword === "move")?.value ?? 0;
 
   let damageTaken = 0;
@@ -55,43 +56,38 @@ export function resolveExchange(
   if (sidestepAtActionBeat) {
     sidestepped = true;
     neutralized = true;
-    good(
-      `Sidestep on beat ${action.beat} — all ${action.instances} shots pass through empty air.`
-    );
+    good(`Sidestep on beat ${action.beat} — ${action.name} passes through empty air.`);
   } else {
     let pool = defendPool;
     let hitsThatLanded = 0;
     let fullyBlocked = 0;
 
     for (let i = 0; i < action.instances; i++) {
-      const block = Math.min(pool, hitDamage);
-      pool -= block;
-      const remaining = hitDamage - block;
-      if (remaining > 0) {
-        damageTaken += remaining;
-        hitsThatLanded++;
-        // on-hit effects trigger only on a hit that is NOT fully prevented
-        pushedBack += Math.abs(onHitMove);
-      } else {
-        fullyBlocked++;
+      // Defend mitigates damage; Move payloads are unblockable
+      if (hitDamage > 0) {
+        const block = Math.min(pool, hitDamage);
+        pool -= block;
+        const remaining = hitDamage - block;
+        if (remaining > 0) {
+          damageTaken += remaining;
+          hitsThatLanded++;
+          pushedBack += Math.abs(onHitMove);
+        } else {
+          fullyBlocked++;
+        }
       }
+      // an unblockable Move payload always lands (only Sidestep avoids it)
+      pushedBack += Math.abs(perHitMove);
     }
 
-    if (defendPool > 0) {
-      neutral(
-        `Defend ${defendPool} pool — ${fullyBlocked} shot${fullyBlocked === 1 ? "" : "s"} fully absorbed.`
-      );
+    if (defendPool > 0 && hitDamage > 0) {
+      neutral(`Defend ${defendPool} — ${fullyBlocked} of ${action.instances} absorbed.`);
     }
-    if (hitsThatLanded > 0) {
-      bad(
-        `${hitsThatLanded} shot${hitsThatLanded === 1 ? "" : "s"} land — ${damageTaken} damage taken.`
-      );
-      if (pushedBack > 0)
-        bad(`Knockback — driven back ${pushedBack} unit${pushedBack === 1 ? "" : "s"}.`);
-    }
-    neutralized = hitsThatLanded === 0;
-    if (neutralized && defendPool > 0)
-      good("Every shot absorbed — the action is fully neutralised.");
+    if (damageTaken > 0) bad(`${damageTaken} damage taken.`);
+    if (pushedBack > 0) bad(`Knockback — driven back ${pushedBack}.`);
+    // fully neutralised only if nothing at all got through
+    neutralized = damageTaken === 0 && pushedBack === 0;
+    if (neutralized) good("Nothing gets through — the action is fully neutralised.");
   }
 
   // a player-side Move keyword resists forced movement (dormant until a

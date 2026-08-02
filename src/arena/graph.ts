@@ -33,8 +33,8 @@ export interface Pattern {
   lead: number; // telegraph → strike time
 }
 export const PATTERNS: Record<string, Pattern> = {
-  volley: { interval: 2.1, lead: 1.5 },
-  volley_fast: { interval: 1.6, lead: 1.25 },
+  volley: { interval: 0.5, lead: 1.0 },
+  volley_fast: { interval: 0.32, lead: 0.85 },
 };
 
 // 3×3 dodge grid — cells indexed 0..8 (row-major, 0 = top-left).

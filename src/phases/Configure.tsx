@@ -15,6 +15,7 @@ export default function Configure() {
     selectedNode,
     belt,
     enemyLearned,
+    enemyAction,
     cycleAbility,
     selectNode,
     assignToSelected,
@@ -33,8 +34,8 @@ export default function Configure() {
     sfx.attackPrompt();
     // fighting-game "character selected" flash, then drop into execution
     setConfirming(true);
-    setTimeout(() => sfx.chain(), 900);
-    setTimeout(() => setPhase("execute"), 2000);
+    setTimeout(() => sfx.chain(), 400);
+    setTimeout(() => setPhase("execute"), 1000);
   };
 
   // config timer — on expiry, commit whatever is configured
@@ -131,7 +132,7 @@ export default function Configure() {
 
       {/* left: enemy preview */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
-        <EnemyPreview learned={enemyLearned} />
+        <EnemyPreview action={enemyAction} learned={enemyLearned} />
       </div>
 
       {/* center: ability diagram */}
@@ -139,26 +140,6 @@ export default function Configure() {
         className={confirming ? "confirm-flash" : ""}
         style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, position: "relative" }}
       >
-        {confirming && (
-          <div
-            style={{
-              position: "absolute",
-              top: "48%",
-              left: "50%",
-              transform: "translate(-50%,-50%) rotate(-4deg)",
-              zIndex: 8,
-              fontFamily: "var(--display)",
-              fontSize: 52,
-              letterSpacing: "0.1em",
-              color: "var(--sidestep)",
-              textShadow: "0 0 24px rgba(255,206,74,0.85), 0 4px 0 #000",
-              whiteSpace: "nowrap",
-              pointerEvents: "none",
-            }}
-          >
-            LOCKED IN
-          </div>
-        )}
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <span className="keycap sm">◄</span>
           <div style={{ textAlign: "center" }}>

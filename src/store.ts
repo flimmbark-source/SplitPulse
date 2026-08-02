@@ -7,6 +7,13 @@ import type {
   ResolvedNode,
 } from "./types";
 import { ABILITIES, CINDER_BATTERY, MATERIALS } from "./data/content";
+import type { EnemyAction } from "./types";
+
+function pickAction(exclude?: EnemyAction): EnemyAction {
+  const pool = CINDER_BATTERY.actions.filter((a) => a !== exclude);
+  const from = pool.length ? pool : CINDER_BATTERY.actions;
+  return from[(Math.random() * from.length) | 0];
+}
 
 export type Phase =
   | "title"
@@ -32,6 +39,7 @@ interface GameState {
   distance: number; // 0..100, 100 == attack range
   chainCount: number;
   enemyLearned: boolean;
+  enemyAction: EnemyAction; // the announced action for the current exchange
 
   // materials
   belt: BeltMaterial[];
@@ -81,6 +89,7 @@ export const useGame = create<GameState>((set, get) => ({
   distance: 0,
   chainCount: 0,
   enemyLearned: false,
+  enemyAction: CINDER_BATTERY.actions[0],
 
   belt: freshBelt(),
 
@@ -104,6 +113,7 @@ export const useGame = create<GameState>((set, get) => ({
       distance: 0,
       chainCount: 0,
       enemyLearned: false,
+      enemyAction: pickAction(),
       belt: freshBelt(),
       assignments: {},
       selectedNode: null,
@@ -192,10 +202,12 @@ export const useGame = create<GameState>((set, get) => ({
       return;
     }
     if (lastResolution?.chainEarned) {
-      // keep the opening: straight back into configuration
+      // keep the opening: straight back into configuration with a NEW action,
+      // so a chain isn't the same exchange twice
       set((s) => ({
         phase: "configure",
         chainCount: s.chainCount + 1,
+        enemyAction: pickAction(s.enemyAction),
         assignments: {},
         selectedNode: null,
       }));
@@ -225,7 +237,8 @@ export const useGame = create<GameState>((set, get) => ({
   gainDistance: (d) =>
     set((s) => ({ distance: Math.min(100, s.distance + d) })),
 
-  reachAttackRange: () => set({ phase: "configure", distance: 100 }),
+  reachAttackRange: () =>
+    set((s) => ({ phase: "configure", distance: 100, enemyAction: pickAction(s.enemyAction) })),
 }));
 
 // dev-only debug handle for manual phase jumps / screenshots

@@ -3,7 +3,7 @@ import { useGame } from "../store";
 import Diagram, { type ExecState } from "../components/Diagram";
 import { nodeEffect } from "../game/nodes";
 import { resolveExchange } from "../game/resolve";
-import { CINDER_BATTERY, CINDER_BATTERY_DIAGRAM } from "../data/content";
+import { actionToDiagram, describeAction } from "../data/content";
 import { sfx } from "../audio";
 import type { ResolvedNode } from "../types";
 
@@ -16,10 +16,10 @@ const END_PAD = 900;
 type Status = "pending" | "hit" | "miss";
 
 export default function Execute() {
-  const { abilities, selectedAbility, assignments, belt, enemyLearned, commitExecution } =
+  const { abilities, selectedAbility, assignments, belt, enemyLearned, enemyAction, commitExecution } =
     useGame();
   const ability = abilities[selectedAbility];
-  const action = CINDER_BATTERY.action;
+  const action = enemyAction;
 
   const nodes = useMemo(
     () => [...ability.nodes].sort((a, b) => a.beat - b.beat),
@@ -41,6 +41,9 @@ export default function Execute() {
   const [firing, setFiring] = useState(false);
   const [sidestepped, setSidestepped] = useState(false);
   const [flash, setFlash] = useState<null | "hit" | "avoid">(null);
+  const [enemyFx, setEnemyFx] = useState<
+    null | { dmg: number; push: number; sidestep: boolean; neutral: boolean }
+  >(null);
 
   // ---- finish + resolve ----
   const finish = () => {
@@ -130,7 +133,20 @@ export default function Execute() {
         );
         const avoided = ss ? statusRef.current[ss.id] === "hit" : false;
         setSidestepped(avoided);
-        if (avoided) {
+        // resolve the enemy action live and show what it did to you, right now
+        const snapshot: ResolvedNode[] = ability.nodes.map((n) => {
+          const { effect, materialKey } = nodeEffect(n, assignments, belt);
+          return { node: n, effect, materialKey, success: statusRef.current[n.id] === "hit" };
+        });
+        const res = resolveExchange(snapshot, action);
+        setEnemyFx({
+          dmg: res.damageTaken,
+          push: res.pushedBack,
+          sidestep: res.sidestepped,
+          neutral: res.actionNeutralized,
+        });
+        setTimeout(() => setEnemyFx(null), 1500);
+        if (avoided || res.actionNeutralized) {
           setFlash("avoid");
         } else {
           setFlash("hit");
@@ -174,7 +190,7 @@ export default function Execute() {
   }, [now, nodes, ability]);
 
   // ---- enemy exec state (same grammar, but authored & auto-resolving) ----
-  const enemyDiagram = CINDER_BATTERY_DIAGRAM;
+  const enemyDiagram = useMemo(() => actionToDiagram(action), [action]);
   const enemyExec: ExecState = useMemo(() => {
     const ring: Record<string, number> = {};
     const nodeState: Record<string, "pending" | "hit" | "miss"> = {};
@@ -286,11 +302,7 @@ export default function Execute() {
           <Diagram ability={enemyDiagram} belt={[]} assignments={{}} exec={enemyExec} />
         </div>
         <div className="tag" style={{ opacity: 0.8, color: "var(--attack)" }}>
-          {enemyLearned
-            ? `fire ×${action.instances} · damage ${action.perHit[0].value} · move −${Math.abs(
-                action.onHit[0].value ?? 0
-              )} on hit`
-            : "effects unknown — one resolution beat"}
+          {enemyLearned ? describeAction(action) : "effects unknown — one resolution beat"}
         </div>
       </section>
 
@@ -342,6 +354,46 @@ export default function Execute() {
                 : "radial-gradient(circle at 40% 55%, rgba(108,240,255,0.35), transparent 60%)",
           }}
         />
+      )}
+
+      {/* the enemy action RESOLVES here — live, not in an after-report */}
+      {enemyFx && (
+        <div
+          className="floatUp"
+          style={{
+            position: "absolute",
+            top: "62%",
+            left: "29%",
+            transform: "translate(-50%,-50%)",
+            zIndex: 22,
+            textAlign: "center",
+            pointerEvents: "none",
+            fontFamily: "var(--display)",
+          }}
+        >
+          {enemyFx.sidestep ? (
+            <div style={{ fontSize: 46, color: "var(--sidestep)", textShadow: "0 0 20px rgba(255,206,74,0.7)" }}>
+              SIDESTEP!
+            </div>
+          ) : enemyFx.neutral ? (
+            <div style={{ fontSize: 40, color: "var(--defend)", textShadow: "0 0 20px rgba(79,157,255,0.7)" }}>
+              BLOCKED!
+            </div>
+          ) : (
+            <>
+              {enemyFx.dmg > 0 && (
+                <div style={{ fontSize: 52, color: "var(--attack)", textShadow: "0 0 22px rgba(255,60,80,0.8)" }}>
+                  −{enemyFx.dmg}
+                </div>
+              )}
+              {enemyFx.push > 0 && (
+                <div style={{ fontSize: 26, color: "var(--move)", letterSpacing: "0.1em" }}>
+                  PUSHED −{enemyFx.push}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   );

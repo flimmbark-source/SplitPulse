@@ -71,8 +71,10 @@ export interface EnemyAction {
   name: string;
   beat: number; // single resolution beat
   instances: number; // number of hit instances generated on that beat
-  perHit: Effect[]; // effects each hit carries (e.g. damage 2)
-  onHit: Effect[]; // effects triggered when a hit lands (e.g. move -1)
+  /** effects each instance carries — damage is mitigated by Defend, while
+   *  move/status payloads are NOT (only a Sidestep avoids them). */
+  perHit: Effect[];
+  onHit: Effect[]; // triggered when a damaging hit lands (e.g. move -1)
   /** partial info shown before the move is learned */
   telegraph: string;
 }
@@ -81,7 +83,7 @@ export interface EnemyDef {
   id: string;
   name: string;
   maxHp: number;
-  action: EnemyAction;
+  actions: EnemyAction[];
 }
 
 // ---- Resolution ------------------------------------------------

@@ -144,20 +144,58 @@ export const ABILITIES: Ability[] = [
 
 // ---- Enemy -----------------------------------------------------
 
-export const CINDER_BATTERY: EnemyDef = {
-  id: "cinder-battery",
-  name: "Cinder Battery",
-  maxHp: 18,
-  action: {
-    id: "cb-fire",
-    name: "Cinder Battery",
+// All actions resolve on beat 3 (answerable by Prism Step's Sidestep), but
+// each DOES something different, so chained exchanges vary.
+export const CINDER_ACTIONS: EnemyAction[] = [
+  {
+    id: "cb-volley",
+    name: "Cinder Volley",
     beat: 3,
     instances: 3,
     perHit: [{ keyword: "damage", value: 2 }],
     onHit: [{ keyword: "move", value: -1, trigger: "onHit" }],
     telegraph: "Three vents flare. Something fires on the third beat.",
   },
+  {
+    // pure knockback — no damage, so Defend does nothing; only Sidestep avoids it
+    id: "cb-shove",
+    name: "Iron Shove",
+    beat: 3,
+    instances: 1,
+    perHit: [{ keyword: "move", value: -3 }],
+    onHit: [],
+    telegraph: "The battery lurches. A single heavy slam is coming.",
+  },
+  {
+    // many small hits — Defend chips in but a full block needs a big pool
+    id: "cb-spray",
+    name: "Ashen Spray",
+    beat: 3,
+    instances: 4,
+    perHit: [{ keyword: "damage", value: 1 }],
+    onHit: [],
+    telegraph: "A wide cone of embers builds across four vents.",
+  },
+];
+
+export const CINDER_BATTERY: EnemyDef = {
+  id: "cinder-battery",
+  name: "Cinder Battery",
+  maxHp: 18,
+  actions: CINDER_ACTIONS,
 };
+
+// a concise, keyword-clear one-line summary of what an action does
+export function describeAction(a: EnemyAction): string {
+  const parts: string[] = [];
+  const dmg = a.perHit.find((e) => e.keyword === "damage")?.value;
+  const mv = a.perHit.find((e) => e.keyword === "move")?.value;
+  const onMv = a.onHit.find((e) => e.keyword === "move")?.value;
+  if (dmg) parts.push(`${a.instances}× Damage ${dmg}`);
+  if (mv) parts.push(`Move −${Math.abs(mv)} (unblockable)`);
+  if (onMv) parts.push(`on hit: Move −${Math.abs(onMv)}`);
+  return parts.join(" · ");
+}
 
 // ---- The enemy action, expressed in the SAME diagram grammar -----
 // A fixed, authored phrase the player reads but does not play (GDD §9.3):
@@ -194,5 +232,3 @@ export function actionToDiagram(action: EnemyAction): Ability {
     edges,
   };
 }
-
-export const CINDER_BATTERY_DIAGRAM = actionToDiagram(CINDER_BATTERY.action);

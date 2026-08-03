@@ -1,7 +1,7 @@
 import { useMemo, useRef, type MutableRefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { NoToneMapping, type Group } from "three";
-import { anchorFor, clamp01, easeIn, easeOut, STRIKE_MS } from "./anchors";
+import { anchorFor } from "./anchors";
 import type { AbilityNode } from "../types";
 
 type Status = "pending" | "hit" | "miss";
@@ -19,68 +19,97 @@ interface RigProps {
 const BASE = { x: 0.28, y: -1.05, z: 2.62 };
 const REST = { x: -0.12, z: 0.3 };
 
-function AxeRig({ startRef, nodes, statusRef, leadIn, beatMs, ringLead }: RigProps) {
+// one keyframe of the swing: rig pose at a moment in the phrase
+interface Frame {
+  t: number;
+  pitch: number;
+  roll: number;
+  yaw: number;
+  y: number;
+}
+
+const catmull = (p0: number, p1: number, p2: number, p3: number, u: number) => {
+  const u2 = u * u;
+  const u3 = u2 * u;
+  return 0.5 * (2 * p1 + (-p0 + p2) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u2 + (-p0 + 3 * p1 - 3 * p2 + p3) * u3);
+};
+
+// build ONE continuous swing across the whole phrase: a slow wind-up before
+// beat 1, the blade weaving down to the impact and back up through the node
+// beats, then a follow-through. The nodes are timing points ON this motion —
+// the axe never resets between them.
+function buildSwing(nodes: AbilityNode[], targetOf: (b: number) => number): Frame[] {
+  const s = [...nodes].sort((a, b) => a.beat - b.beat);
+  const n = s.length;
+  const b1 = targetOf(s[0].beat);
+  const bl = targetOf(s[n - 1].beat);
+  const bottomI = n >= 3 ? n - 2 : n - 1; // deepest point of the combo
+  const frames: Frame[] = [];
+  frames.push({ t: b1 - 1000, pitch: REST.x, roll: REST.z, yaw: 0, y: 0 });
+  // anticipation: heave the axe up and back, reaching the wound pose at beat 1
+  frames.push({ t: b1 - 150, pitch: REST.x - 1.35, roll: REST.z + 0.3, yaw: -0.3, y: 0.24 });
+  s.forEach((node, i) => {
+    const t = targetOf(node.beat);
+    const a = anchorFor(node.execKey);
+    const dirX = (a.x - 0.5) * 2; // -1 left .. 1 right
+    // height: descend to the bottom, then rise on the return stroke
+    const h =
+      i <= bottomI
+        ? 0.12 + (bottomI ? (i / bottomI) * 0.88 : 0.88)
+        : 1 - ((i - bottomI) / (n - 1 - bottomI)) * 0.55;
+    frames.push({
+      t,
+      pitch: REST.x - 1.2 + h * 2.4,
+      roll: REST.z - dirX * 0.42,
+      yaw: dirX * 0.34,
+      y: -0.3 * h,
+    });
+  });
+  frames.push({ t: bl + 520, pitch: REST.x + 0.25, roll: REST.z, yaw: 0, y: -0.06 });
+  frames.push({ t: bl + 1150, pitch: REST.x, roll: REST.z, yaw: 0, y: 0 });
+  return frames;
+}
+
+function AxeRig({ startRef, nodes, leadIn, beatMs }: RigProps) {
   const g = useRef<Group>(null);
-  const targetOf = (beat: number) => leadIn + (beat - 1) * beatMs;
+  const frames = useMemo(
+    () => buildSwing(nodes, (beat: number) => leadIn + (beat - 1) * beatMs),
+    [nodes, leadIn, beatMs]
+  );
 
   useFrame((_s, dt) => {
     if (!g.current) return;
     const t = performance.now() - startRef.current;
+    const f = frames;
 
-    // the node the axe is currently addressing = nearest by time
-    let active: AbilityNode | null = null;
-    let best = Infinity;
-    for (const n of nodes) {
-      const d = Math.abs(t - targetOf(n.beat));
-      if (d < best) {
-        best = d;
-        active = n;
-      }
+    // sample the ONE continuous swing at the current time (Catmull-Rom) —
+    // the axe flows through the whole phrase, nodes are moments along it
+    let pitch: number, roll: number, yaw: number, y: number;
+    if (t <= f[0].t) {
+      ({ pitch, roll, yaw, y } = f[0]);
+    } else if (t >= f[f.length - 1].t) {
+      ({ pitch, roll, yaw, y } = f[f.length - 1]);
+    } else {
+      let i = 0;
+      while (i < f.length - 1 && f[i + 1].t <= t) i++;
+      const p1 = f[i];
+      const p2 = f[i + 1];
+      const p0 = f[i - 1] ?? p1;
+      const p3 = f[i + 2] ?? p2;
+      const u = (t - p1.t) / (p2.t - p1.t);
+      pitch = catmull(p0.pitch, p1.pitch, p2.pitch, p3.pitch, u);
+      roll = catmull(p0.roll, p1.roll, p2.roll, p3.roll, u);
+      yaw = catmull(p0.yaw, p1.yaw, p2.yaw, p3.yaw, u);
+      y = catmull(p0.y, p1.y, p2.y, p3.y, u);
     }
 
-    let pitch = REST.x;
-    let roll = REST.z;
-    let yaw = 0;
-    let lift = 0;
-    if (active) {
-      const local = t - targetOf(active.beat);
-      const a = anchorFor(active.execKey);
-      const dirX = (a.x - 0.5) * 2; // -1 left .. 1 right
-      if (local < -ringLead) {
-        // rest
-      } else if (local < 0) {
-        // WIND UP: raise the blade up and back
-        const p = easeOut(clamp01((local + ringLead) / ringLead));
-        pitch = REST.x - 1.0 * p;
-        roll = REST.z + dirX * 0.25 * p;
-        yaw = -dirX * 0.25 * p;
-        lift = 0.18 * p;
-      } else if (local < STRIKE_MS) {
-        // STRIKE: sweep DOWN across the view. A clean hit drives through; a
-        // whiff pulls up short.
-        const struck = statusRef.current[active.id] === "hit";
-        const reach = struck ? 1 : 0.72;
-        const s = easeIn(clamp01(local / STRIKE_MS));
-        pitch = REST.x - 1.0 + (1.0 + 1.15 * reach) * s;
-        roll = REST.z - dirX * 0.35 * s;
-        yaw = dirX * 0.3 * s;
-        lift = 0.18 - 0.42 * s;
-      } else {
-        // FOLLOW THROUGH -> recover back UP to rest before the next node
-        const p = easeOut(clamp01((local - STRIKE_MS) / 400));
-        pitch = (REST.x + 1.15) * (1 - p) + REST.x * p;
-        roll = REST.z;
-        lift = -0.24 * (1 - p);
-      }
-    }
-
-    // subtle idle sway
     const sway = Math.sin(t * 0.003) * 0.02;
-    const k = Math.min(1, dt * 20);
+    // a hair of lag adds weight without desyncing (the frames own the timing)
+    const k = Math.min(1, dt * 26);
     g.current.rotation.x += (pitch + sway - g.current.rotation.x) * k;
     g.current.rotation.z += (roll - g.current.rotation.z) * k;
     g.current.rotation.y += (yaw - g.current.rotation.y) * k;
-    g.current.position.y += (BASE.y + lift - g.current.position.y) * k;
+    g.current.position.y += (BASE.y + y - g.current.position.y) * k;
   });
 
   // procedural low-poly axe — pivot at the grip; haft rises up into frame,

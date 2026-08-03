@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "../store";
 import Diagram, { type ExecState } from "../components/Diagram";
-import { nodeEffect } from "../game/nodes";
+import { effectLabel, keyColor, nodeEffect } from "../game/nodes";
+import { KEYWORDS } from "../game/keywords";
 import { resolveExchange } from "../game/resolve";
 import { actionBeats, actionToDiagram, describeAction } from "../data/content";
 import { sfx } from "../audio";
+import WeaponPov from "../execute/WeaponPov";
+import { anchorFor, clamp01 } from "../execute/anchors";
 import type { ResolvedNode } from "../types";
 
 const BEAT_MS = 620;
@@ -43,6 +46,11 @@ export default function Execute() {
 
   const [now, setNow] = useState(0);
   const [flash, setFlash] = useState<null | "hit" | "avoid">(null);
+  // damage / effect numbers that pop at a node's strike anchor on a hit
+  const [hits, setHits] = useState<
+    { id: number; x: number; y: number; text: string; color: string }[]
+  >([]);
+  const hitIdRef = useRef(0);
   const [enemyFx, setEnemyFx] = useState<
     null | { dmg: number; push: number; sidestep: boolean; neutral: boolean }
   >(null);
@@ -89,6 +97,16 @@ export default function Execute() {
           case "sidestep": sfx.sidestep(); break;
           default: sfx.hit(node.beat);
         }
+        // the strike CONNECTS: pop its number at the anchor
+        if (effect) {
+          const a = anchorFor(node.execKey);
+          const id = hitIdRef.current++;
+          const color = effect.keyword === "attack" || effect.keyword === "poison"
+            ? KEYWORDS[effect.keyword].color
+            : keyColor(node.execKey, KEYWORDS[effect.keyword].color);
+          setHits((h) => [...h, { id, x: a.x, y: a.y, text: effectLabel(effect), color }]);
+          setTimeout(() => setHits((h) => h.filter((x) => x.id !== id)), 850);
+        }
       }
     };
     window.addEventListener("keydown", on);
@@ -103,6 +121,7 @@ export default function Execute() {
     const loop = () => {
       const t = performance.now() - startRef.current;
       setNow(t);
+      if (import.meta.env.DEV) (window as unknown as { __exec: { now: number } }).__exec = { now: t };
 
       // count-in / beat ticks
       const beatIdx = Math.floor((t - LEAD_IN) / BEAT_MS);
@@ -258,7 +277,7 @@ export default function Execute() {
         </div>
       </div>
 
-      {/* PLAYER SIDE — left */}
+      {/* PLAYER SIDE — first-person weapon POV with aligned 2D prompts */}
       <section
         style={{
           position: "absolute",
@@ -266,19 +285,128 @@ export default function Execute() {
           left: 0,
           width: "50%",
           height: "100%",
-          padding: "64px 18px 44px 34px",
-          display: "flex",
-          flexDirection: "column",
+          overflow: "hidden",
         }}
       >
-        <div>
+        <WeaponPov
+          startRef={startRef}
+          nodes={nodes}
+          statusRef={statusRef}
+          leadIn={LEAD_IN}
+          beatMs={BEAT_MS}
+          ringLead={RING_LEAD}
+        />
+
+        {/* header */}
+        <div style={{ position: "absolute", top: 56, left: 30, zIndex: 4 }}>
           <div className="tag" style={{ color: "var(--pulse)" }}>you · performed</div>
           <div className="display-title">{ability.name}</div>
         </div>
-        <div style={{ flex: 1, minHeight: 0, marginTop: 6 }}>
-          <Diagram ability={ability} belt={belt} assignments={assignments} exec={exec} showKeys />
-        </div>
-        <div className="tag" style={{ textAlign: "center", opacity: 0.7 }}>
+
+        {/* node prompts, aligned to each key's strike anchor */}
+        {nodes.map((n) => {
+          const target = targetOf(n.beat);
+          if (now < target - RING_LEAD - 40 || now > target + 340) return null;
+          const a = anchorFor(n.execKey);
+          const ringP = clamp01(exec.ring[n.id]);
+          const st = exec.nodeState[n.id];
+          const kc = keyColor(n.execKey, "var(--pulse)");
+          const { effect } = nodeEffect(n, assignments, belt);
+          const ic = effect ? KEYWORDS[effect.keyword].color : "var(--ink-dim)";
+          const ringSize = 44 + (1 - ringP) * 74;
+          const ringCol = st === "hit" ? "var(--hit)" : ringP > 0.82 ? "var(--hit)" : kc;
+          return (
+            <div
+              key={n.id}
+              className="pop"
+              style={{
+                position: "absolute",
+                left: `${a.x * 100}%`,
+                top: `${a.y * 100}%`,
+                transform: "translate(-50%,-50%)",
+                zIndex: 4,
+                opacity: st === "miss" ? 0.3 : 1,
+                transition: "opacity 0.2s linear",
+              }}
+            >
+              {/* contracting timing ring */}
+              {st === "pending" && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    width: ringSize,
+                    height: ringSize,
+                    transform: "translate(-50%,-50%)",
+                    borderRadius: "50%",
+                    border: `2px solid ${ringCol}`,
+                    boxShadow: `0 0 14px ${ringCol}`,
+                  }}
+                />
+              )}
+              {/* effect icon, tight above */}
+              {effect && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: -22,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    color: ic,
+                    fontWeight: 700,
+                    fontSize: 16,
+                  }}
+                >
+                  {KEYWORDS[effect.keyword].glyph}
+                </div>
+              )}
+              {/* the key */}
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  border: `2px solid ${st === "hit" ? "var(--hit)" : kc}`,
+                  background: st === "hit" ? "var(--hit)" : "#0c0c16",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: st === "hit" ? "#0c0c16" : kc,
+                  fontFamily: "var(--mono)",
+                  fontWeight: 700,
+                  boxShadow: `0 0 16px ${st === "hit" ? "var(--hit)" : kc}`,
+                }}
+              >
+                {n.execKey}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* strike numbers */}
+        {hits.map((h) => (
+          <div
+            key={h.id}
+            className="dmg-float"
+            style={{
+              position: "absolute",
+              left: `${h.x * 100}%`,
+              top: `${h.y * 100}%`,
+              zIndex: 6,
+              color: h.color,
+              fontFamily: "var(--display)",
+              fontSize: 30,
+              letterSpacing: "0.04em",
+              textShadow: `0 0 16px ${h.color}, 0 2px 0 #000`,
+              pointerEvents: "none",
+            }}
+          >
+            {h.text}
+          </div>
+        ))}
+
+        <div className="tag" style={{ position: "absolute", bottom: 30, left: 0, width: "100%", textAlign: "center", opacity: 0.7 }}>
           strike each key as its ring snaps shut
         </div>
       </section>

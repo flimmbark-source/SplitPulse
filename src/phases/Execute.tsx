@@ -11,7 +11,7 @@ import { anchorFor, clamp01 } from "../execute/anchors";
 import type { ResolvedNode } from "../types";
 
 const BEAT_MS = 620;
-const LEAD_IN = 1300; // count-in before beat 1
+const LEAD_IN = 2 * BEAT_MS; // count-in of exactly two beats, on the grid
 const RING_LEAD = 860; // how long the ring contracts before target
 const WINDOW = 150; // ± hit window (ms)
 const END_PAD = 900;
@@ -238,7 +238,6 @@ export default function Execute() {
     return { nodeState, ring, pulse };
   }, [now, enemyDiagram]);
 
-  const displayBeat = Math.max(0, Math.min(ability.beats, Math.floor((now - LEAD_IN) / BEAT_MS) + 1));
   const counting = now < LEAD_IN;
 
   return (
@@ -258,24 +257,6 @@ export default function Execute() {
           zIndex: 5,
         }}
       />
-
-      {/* shared beat readout, straddling the seam */}
-      <div
-        style={{
-          position: "absolute",
-          top: 20,
-          left: "50%",
-          transform: "translateX(-50%)",
-          textAlign: "center",
-          zIndex: 8,
-        }}
-      >
-        <div className="tag">beat</div>
-        <div style={{ fontFamily: "var(--display)", fontSize: 34, lineHeight: 1 }}>
-          {counting ? "—" : displayBeat}
-          <span className="dim" style={{ fontSize: 16 }}> / {ability.beats}</span>
-        </div>
-      </div>
 
       {/* PLAYER SIDE — first-person weapon POV with aligned 2D prompts */}
       <section
@@ -454,22 +435,24 @@ export default function Execute() {
           />
         ))}
 
-      {/* count-in banner */}
+      {/* count-in: a clean two-beat "ready" cue at the top of the POV, out of
+          the way of the weapon — the first ring then contracts on the grid */}
       {counting && (
         <div
-          className="hud"
           style={{
-            top: "42%",
-            left: "29%",
-            transform: "translate(-50%,-50%)",
-            fontFamily: "var(--display)",
-            fontSize: 64,
-            color: "var(--pulse)",
-            zIndex: 20,
-            textShadow: "0 0 24px var(--pulse)",
+            position: "absolute",
+            top: 108,
+            left: "25%",
+            transform: "translateX(-50%)",
+            zIndex: 8,
+            fontFamily: "var(--mono)",
+            fontSize: 12,
+            letterSpacing: "0.3em",
+            color: "var(--ink-dim)",
+            textTransform: "uppercase",
           }}
         >
-          {Math.max(1, Math.ceil((LEAD_IN - now) / BEAT_MS))}
+          ready · {Math.max(1, Math.ceil((LEAD_IN - now) / BEAT_MS))}
         </div>
       )}
 

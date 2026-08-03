@@ -15,7 +15,9 @@ interface RigProps {
   ringLead: number;
 }
 
-const REST = { x: -0.15, z: -0.35 };
+// held-viewmodel framing: grip below the view, blade up in frame
+const BASE = { x: 0.28, y: -1.05, z: 2.62 };
+const REST = { x: -0.12, z: 0.3 };
 
 function AxeRig({ startRef, nodes, statusRef, leadIn, beatMs, ringLead }: RigProps) {
   const g = useRef<Group>(null);
@@ -37,75 +39,83 @@ function AxeRig({ startRef, nodes, statusRef, leadIn, beatMs, ringLead }: RigPro
     }
 
     let pitch = REST.x;
-    let roll = 0;
+    let roll = REST.z;
     let yaw = 0;
     let lift = 0;
     if (active) {
       const local = t - targetOf(active.beat);
       const a = anchorFor(active.execKey);
-      // horizontal lean toward the strike direction (A left, D right)
-      const dirX = (a.x - 0.5) * 2; // -1..1
-      const dirY = (a.y - 0.52) * 2; // -1 up .. 1 down
+      const dirX = (a.x - 0.5) * 2; // -1 left .. 1 right
       if (local < -ringLead) {
-        pitch = REST.x;
+        // rest
       } else if (local < 0) {
-        // WIND UP: raise and pull opposite the strike direction
+        // WIND UP: raise the blade up and back
         const p = easeOut(clamp01((local + ringLead) / ringLead));
-        pitch = REST.x - 1.15 * p;
-        roll = -dirX * 0.5 * p;
-        yaw = -dirX * 0.35 * p;
-        lift = 0.25 * p - dirY * 0.15 * p;
+        pitch = REST.x - 1.0 * p;
+        roll = REST.z + dirX * 0.25 * p;
+        yaw = -dirX * 0.25 * p;
+        lift = 0.18 * p;
       } else if (local < STRIKE_MS) {
-        // STRIKE: fast swing through toward the anchor direction. A clean hit
-        // drives all the way through; a whiff pulls up short.
+        // STRIKE: sweep DOWN across the view. A clean hit drives through; a
+        // whiff pulls up short.
         const struck = statusRef.current[active.id] === "hit";
-        const reach = struck ? 1 : 0.7;
+        const reach = struck ? 1 : 0.72;
         const s = easeIn(clamp01(local / STRIKE_MS));
-        pitch = -1.15 + REST.x + (1.15 + 0.9 * reach) * s;
-        roll = -dirX * 0.5 * (1 - s) + dirX * 0.55 * s;
-        yaw = dirX * 0.45 * s;
-        lift = (0.25 - 0.7 * reach * s) - dirY * 0.15 * (1 - s);
+        pitch = REST.x - 1.0 + (1.0 + 1.15 * reach) * s;
+        roll = REST.z - dirX * 0.35 * s;
+        yaw = dirX * 0.3 * s;
+        lift = 0.18 - 0.42 * s;
       } else {
-        // FOLLOW THROUGH -> settle back toward rest before the next node
-        const p = clamp01((local - STRIKE_MS) / 380);
-        pitch = 0.75 * (1 - p) + REST.x * p;
-        lift = -0.2 * (1 - p);
+        // FOLLOW THROUGH -> recover back UP to rest before the next node
+        const p = easeOut(clamp01((local - STRIKE_MS) / 400));
+        pitch = (REST.x + 1.15) * (1 - p) + REST.x * p;
+        roll = REST.z;
+        lift = -0.24 * (1 - p);
       }
     }
 
     // subtle idle sway
     const sway = Math.sin(t * 0.003) * 0.02;
-    const tgtPitch = pitch + sway;
-    // smooth toward target so it never snaps
-    const k = Math.min(1, dt * 22);
-    g.current.rotation.x += (tgtPitch - g.current.rotation.x) * k;
+    const k = Math.min(1, dt * 20);
+    g.current.rotation.x += (pitch + sway - g.current.rotation.x) * k;
     g.current.rotation.z += (roll - g.current.rotation.z) * k;
     g.current.rotation.y += (yaw - g.current.rotation.y) * k;
-    g.current.position.y += (-0.55 + lift - g.current.position.y) * k;
+    g.current.position.y += (BASE.y + lift - g.current.position.y) * k;
   });
 
-  // procedural low-poly axe, pivot at the grip (held lower-right of the POV)
+  // procedural low-poly axe — pivot at the grip; haft rises up into frame,
+  // head at the top so a pitch-swing chops down across the POV.
   return (
-    <group ref={g} position={[1.15, -0.55, 2.5]} rotation={[REST.x, 0, 0]} scale={1.1}>
+    <group ref={g} position={[BASE.x, BASE.y, BASE.z]} rotation={[REST.x, 0, REST.z]} scale={1.25}>
       {/* haft */}
-      <mesh position={[0, -0.5, 0]}>
-        <boxGeometry args={[0.07, 1.3, 0.07]} />
-        <meshStandardMaterial color="#4a3524" flatShading roughness={1} />
+      <mesh position={[0, 0.9, 0]}>
+        <boxGeometry args={[0.13, 1.9, 0.13]} />
+        <meshStandardMaterial color="#513a26" flatShading roughness={1} />
       </mesh>
-      {/* head mount */}
-      <mesh position={[0, 0.18, 0]}>
-        <boxGeometry args={[0.16, 0.2, 0.16]} />
+      {/* grip wrap */}
+      <mesh position={[0, 0.35, 0]}>
+        <boxGeometry args={[0.18, 0.55, 0.18]} />
+        <meshStandardMaterial color="#241a12" flatShading roughness={1} />
+      </mesh>
+      {/* head socket */}
+      <mesh position={[0, 1.78, 0]}>
+        <boxGeometry args={[0.26, 0.3, 0.26]} />
         <meshStandardMaterial color="#2a2a34" flatShading />
       </mesh>
-      {/* blade */}
-      <mesh position={[0.28, 0.2, 0]} rotation={[0, 0, 0.15]}>
-        <boxGeometry args={[0.5, 0.42, 0.05]} />
-        <meshStandardMaterial color="#c9d0dd" emissive="#8ea0c0" emissiveIntensity={0.35} flatShading metalness={0.2} roughness={0.5} />
+      {/* blade — kept a touch self-lit so it stays readable mid-swing */}
+      <mesh position={[0.5, 1.74, 0]} rotation={[0, 0, 0.12]}>
+        <boxGeometry args={[0.92, 0.66, 0.07]} />
+        <meshStandardMaterial color="#cdd4e2" emissive="#aeb9cf" emissiveIntensity={0.75} flatShading metalness={0.3} roughness={0.5} />
       </mesh>
-      {/* glowing edge */}
-      <mesh position={[0.5, 0.2, 0]}>
-        <boxGeometry args={[0.06, 0.44, 0.07]} />
-        <meshStandardMaterial color="#eaf2ff" emissive="#cfe6ff" emissiveIntensity={1.4} toneMapped={false} />
+      {/* glowing cutting edge */}
+      <mesh position={[0.98, 1.74, 0]}>
+        <boxGeometry args={[0.09, 0.72, 0.1]} />
+        <meshStandardMaterial color="#eaf2ff" emissive="#cfe6ff" emissiveIntensity={2.2} toneMapped={false} />
+      </mesh>
+      {/* top spike */}
+      <mesh position={[0, 2.08, 0]}>
+        <boxGeometry args={[0.09, 0.34, 0.09]} />
+        <meshStandardMaterial color="#3a3a46" flatShading />
       </mesh>
     </group>
   );
